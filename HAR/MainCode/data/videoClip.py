@@ -118,14 +118,17 @@ def download_clip(row, label_to_dir, trim, count):
         # print('Already downloaded: ', filename)
 
     if trim:
+        # do_trim(time_start, time_end,output_path, filename, label_to_dir, label) 
         # Take video from tmp folder and put trimmed to final destination folder
         # better write full path to video
-        # if time_end-time_start >2:
-        #     for i in range(0,time_end-time_start):
-        #         do_trim(time_start+i, time_start+2+i,output_path, filename, label_to_dir, label)
-        # else:        do_trim(time_start, time_end,output_path, filename, label_to_dir, label) 
+        if time_end-time_start >2:
+            k=2
+            if time_end-time_start > 61 : k = 7
+
+            for i in range(0,time_end-time_start,k):
+                do_trim(time_start+i, time_start+2+i,output_path, filename, label_to_dir, label)
+        else:        do_trim(time_start, time_end,output_path, filename, label_to_dir, label) 
  
-        do_trim(time_start, time_end,output_path, filename, label_to_dir, label) 
 
     # print('Processed %i out of %i' % (count + 1, TOTAL_VIDEOS))
 
