@@ -1,0 +1,5 @@
+Collecting decord
+  Using cached decord-0.6.0-py3-none-win_amd64.whl (24.7 MB)
+Requirement already satisfied: numpy>=1.14.0 in c:\users\ai-lab\.conda\envs\pyskl\lib\site-packages (from decord) (1.19.2)
+Installing collected packages: decord
+Successfully installed decord-0.6.0

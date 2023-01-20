@@ -1,0 +1,17 @@
+*.pyc
+__pycache__
+.idea/
+
+*.mp4
+*.mp3
+*.wav
+*.avi
+*.jpg
+
+*.pth
+*.caffemodel
+
+/videoClip
+
+
+HAR/MainCode/data/kinetics700/
