@@ -91,9 +91,8 @@ class PoseDetector():
             for _ in range(25):
                 ntu.append([0.0,0.0,0.0])
 
-        ntu_array = np.array(ntu, dtype=np.float16)
-        landmark_dict = {'keypoints':ntu_array }         
-        return [landmark_dict]
+        
+        return ntu
 
     def MP2CC(self,lm):
         cc=[]

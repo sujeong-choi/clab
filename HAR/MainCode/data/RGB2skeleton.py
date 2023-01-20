@@ -121,7 +121,7 @@ class Annotation:
             else:  
                 point_dict = self.model.getPoints()
             ret.append(point_dict)
-        return np.array(ret)
+        return np.array([ret], dtype=np.float16)
         
  
     def get_anno(self, frame_data: dict) -> dict:
@@ -173,7 +173,7 @@ def main():
     annotator = Annotation(args)
     anno_dict = annotator.get_anno_dict(videoFiles)
     split_anno_dict = annotator.split_train_test(videoFiles.file_cnt, videoFiles.get_file_names())
-    videoFiles.write_pkl(split_anno_dict, "custum_dataset.pkl")
+    videoFiles.write_pkl(split_anno_dict, "custom_dataset.pkl")
 
 
     # tmp_frame_dir = osp.dirname('./tmp')

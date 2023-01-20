@@ -7,10 +7,10 @@ model = dict(
         gcn_with_res=True,
         tcn_type='mstcn',
         graph_cfg=dict(layout='nturgb+d', mode='spatial')),
-    cls_head=dict(type='GCNHead', num_classes=120, in_channels=256))
+    cls_head=dict(type='GCNHead', num_classes=121, in_channels=256))
 
 dataset_type = 'PoseDataset'
-ann_file = 'data/custum_dataset.pkl'
+ann_file = 'data/custom_dataset.pkl'
 train_pipeline = [
     dict(type='PreNormalize3D'),
     dict(type='GenSkeFeat', dataset='nturgb+d', feats=['j']),
