@@ -97,8 +97,10 @@ def train_model(model,
         find_unused_parameters=find_unused_parameters)
 
     # build runner
+    print("optimizer 생성\n")
     optimizer = build_optimizer(model, cfg.optimizer)
 
+    print("EpochBasedRunner 생성\n")
     Runner = EpochBasedRunner
     runner = Runner(
         model,
@@ -140,7 +142,8 @@ def train_model(model,
     elif cfg.get('load_from', None):
         cfg.load_from = cache_checkpoint(cfg.load_from)
         runner.load_checkpoint(cfg.load_from)
-
+        
+    print("Start running.")
     runner.run(data_loaders, cfg.workflow, cfg.total_epochs)
 
     dist.barrier()

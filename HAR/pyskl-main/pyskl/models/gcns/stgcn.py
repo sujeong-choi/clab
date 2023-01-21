@@ -55,24 +55,33 @@ class STGCNBlock(nn.Module):
 
 @BACKBONES.register_module()
 class STGCN(nn.Module):
-
+    '''
+     backbone=dict(
+        type='STGCN',
+        gcn_adaptive='init',
+        gcn_with_res=True,
+        tcn_type='mstcn',
+        graph_cfg=dict(layout='nturgb+d', mode='spatial')),
+    '''
     def __init__(self,
                  graph_cfg,
                  in_channels=3,
                  base_channels=64,
                  data_bn_type='VC',
                  ch_ratio=2,
-                 num_person=2,  # * Only used when data_bn_type == 'MVC'
+                 num_person=1,  # * Only used when data_bn_type == 'MVC'
                  num_stages=10,
                  inflate_stages=[5, 8],
                  down_stages=[5, 8],
                  pretrained=None,
                  **kwargs):
         super().__init__()
+        print("STCGN class진입(head)\n")
 
         self.graph = Graph(**graph_cfg)
         A = torch.tensor(self.graph.A, dtype=torch.float32, requires_grad=False)
         self.data_bn_type = data_bn_type
+        print("data_bn_type = ",data_bn_type,"\n")
         self.kwargs = kwargs
 
         if data_bn_type == 'MVC':
@@ -123,11 +132,13 @@ class STGCN(nn.Module):
 
     def forward(self, x):
         N, M, T, V, C = x.size()
-        x = x.permute(0, 1, 3, 4, 2).contiguous()
+        print(f"N={N}, M={M}, T={T}, V={V}, C={C}\n")
+        x = x.permute(0, 1, 3, 4, 2).contiguous() # 차원 변환
         if self.data_bn_type == 'MVC':
-            x = self.data_bn(x.view(N, M * V * C, T))
+            new_x = x.view(N, M * V * C, T)
         else:
-            x = self.data_bn(x.view(N * M, V * C, T))
+            new_x = x.view(N * M, V * C, T)
+        x = self.data_bn(new_x)
         x = x.view(N, M, V, C, T).permute(0, 1, 3, 4, 2).contiguous().view(N * M, C, T, V)
 
         for i in range(self.num_stages):

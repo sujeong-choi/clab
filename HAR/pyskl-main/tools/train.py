@@ -112,9 +112,11 @@ def main():
     meta['config_name'] = osp.basename(args.config)
     meta['work_dir'] = osp.basename(cfg.work_dir.rstrip('/\\'))
 
-    model = build_model(cfg.model)
-
+    print("모델 생성")
+    model = build_model(cfg.model) # recognizer 모델 생성
+    print("dataset 생성")
     datasets = [build_dataset(cfg.data.train)]
+
 
     cfg.workflow = cfg.get('workflow', [('train', 1)])
     assert len(cfg.workflow) == 1
@@ -145,6 +147,8 @@ def main():
 
     dist.barrier()
 
+    # 모델 학습
+    print("train_model 함수 실행\n")
     train_model(model, datasets, cfg, validate=args.validate, test=test_option, timestamp=timestamp, meta=meta)
     dist.barrier()
 
