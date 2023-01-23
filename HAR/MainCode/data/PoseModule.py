@@ -82,17 +82,18 @@ class PoseDetector():
     def get3DPoints(self):
         lm = []
         ntu = []
+        landmark_score = []
         if self.results.pose_world_landmarks:
             for landmark in self.results.pose_world_landmarks.landmark:
                 lm.append([landmark.x, landmark.y, landmark.z])
+                landmark_score.append(landmark.visibility)
                         
             ntu = self.MP2NTU(lm)
+            landmark_score = self.MP2NTUScore(landmark_score)
         else:
             for _ in range(25):
                 ntu.append([0.0,0.0,0.0])
-
-        
-        return ntu
+        return ntu, landmark_score
 
     def MP2CC(self,lm):
         cc=[]
@@ -108,19 +109,41 @@ class PoseDetector():
         # 몸통&얼굴
         n[1]= [(lm[24][i]+lm[23][i])/2 for i in range(length)]
         n[21] = [(lm[12][i]+lm[11][i])/2 for i in range(length)]
-        n[2] = [(n[1][i]+n[21][i])/2 for i in range(length)]
-        n[4] = lm[0]
-        n[3] = [n[4][i]/3+2*n[21][i]/3 for i in range(length)]
+        n[2] = [(lm[1][i]+lm[21][i])/2 for i in range(length)]
+        n[4] = [(lm[2][i]+lm[5][i])/2 for i in range(length)]
+        n[3] = [lm[4][i]/3+2*lm[21][i]/3 for i in range(length)]
         # 왼팔
         n[5], n[6] , n[7], n[22], n[23] = lm[11], lm[13], lm[15], lm[19], lm[21]
-        n[8] = [(n[7][i]+n[22][i])/2 for i in range(length)]
+        n[8] = [(lm[7][i]+lm[22][i])/2 for i in range(length)]
         # 오른팔
         n[9], n[10],n[11], n[24], n[25] = lm[12], lm[14], lm[16], lm[20], lm[22]
-        n[12] = [(n[11][i]+n[24][i])/2 for i in range(length)]
+        n[12] = [(lm[11][i]+lm[24][i])/2 for i in range(length)]
         # 왼다리
         n[13],n[14], n[15], n[16]  = lm[23], lm[25], lm[27], lm[31]
         # 오른다리
         n[17], n[18], n[19], n[20] = lm[24], lm[26], lm[28], lm[32]
+        
+        return n[1:]
+    
+    def MP2NTUScore(self,score_list):
+        n = [0 for i in range(26)]
+        
+        # 몸통&얼굴
+        n[1]= (score_list[24]+score_list[23])/2
+        n[21]= (score_list[12]+score_list[11])/2       
+        n[2]= (score_list[1]+score_list[21])/2       
+        n[4]= (score_list[2]+score_list[5])/2        
+        n[3]= (score_list[4]+score_list[21]*2)/3
+        # 왼팔
+        n[5], n[6] , n[7], n[22], n[23] = score_list[11], score_list[13], score_list[15], score_list[19], score_list[21]
+        n[8]= (score_list[7]+score_list[22])/2
+        # 오른팔
+        n[9], n[10],n[11], n[24], n[25] = score_list[12], score_list[14], score_list[16], score_list[20], score_list[22]
+        n[12]= (score_list[11]+score_list[24])/2
+        # 왼다리
+        n[13],n[14], n[15], n[16]  = score_list[23], score_list[25], score_list[27], score_list[31]
+        # 오른다리
+        n[17], n[18], n[19], n[20] = score_list[24], score_list[26], score_list[28], score_list[32]
         
         return n[1:]
 
