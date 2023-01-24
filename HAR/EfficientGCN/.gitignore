@@ -1,0 +1,16 @@
+pretrained
+docs
+.DS_Store
+*/.DS_Store
+ft_local
+*/ft_local
+__pycache__
+*/__pycache__
+__MACOSX
+*/__MACOSX
+.vscode
+log.txt
+log
+nohup.out
+ft_sync.sh
+*.skeleton

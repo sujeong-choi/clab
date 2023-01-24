@@ -10,7 +10,7 @@ model = dict(
     cls_head=dict(type='GCNHead', num_classes=121, in_channels=256))
 
 dataset_type = 'PoseDataset'
-ann_file = 'data/custom_dataset.pkl'
+ann_file = '../MainCode/data/custom_dataset.pkl'
 train_pipeline = [
     dict(type='PreNormalize3D'),
     dict(type='GenSkeFeat', dataset='nturgb+d', feats=['j']),
