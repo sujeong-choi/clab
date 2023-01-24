@@ -39,8 +39,8 @@ class FileController:
             raise StopIteration
         frames, frame_name = self.read_video(self.file_cnt)
         
-        if frame_name not in self.out_P_dict:
-            self.out_P_dict[frame_name] = dict(S=0,P=self.out_P_cnt)
+        if frame_name not in self.out_P_dict or self.out_P_dict[frame_name]['S'] >= 32:
+            self.out_P_dict[frame_name] = dict(S=18,P=self.out_P_cnt)
             self.out_P_cnt += 1
         else:
             self.out_P_dict[frame_name]['S'] += 1
