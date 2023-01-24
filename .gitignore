@@ -17,8 +17,5 @@ __pycache__
 HAR/MainCode/data/kinetics700/
 
 # PFD ignore
-keypoint_model
-pfd_dataset
-pfd_video_dataset
-custom_dataset
 __pycache__
+assets
