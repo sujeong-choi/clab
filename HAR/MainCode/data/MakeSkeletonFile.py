@@ -2,7 +2,6 @@ import PoseModule as pm
 import numpy as np
 import argparse
 import os
-import os.path as osp
 import cv2
 from tqdm import tqdm
 
@@ -137,9 +136,9 @@ class SkeletonMaker:
         file = []
         
         skeleton_list, score_list = self.skeleton_inference(frames)
-        # print(score_list)
         frame_num = len(skeleton_list)
         file.append(self.translate_str(frame_num))
+        self.bodyID += 1
         
         for idx, skeleton in enumerate(skeleton_list):
             body_cnt = 1
@@ -152,9 +151,12 @@ class SkeletonMaker:
             joint_num = 25
             file.append(self.translate_str(joint_num))
             
-            for idx in range(joint_num):
-                other_joint = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 2]  #차후 수정 가능
-                file.append(self.translate_str(skeleton[idx] + other_joint))
+            for i in range(joint_num):
+                if len(score_list[idx]) == 0 or score_list[idx][i] <= 0.6:
+                    other_joint = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0]  #차후 수정 가능
+                else:
+                    other_joint = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 2]
+                file.append(self.translate_str(skeleton[i] + other_joint))
         
         return file
                     
@@ -175,12 +177,11 @@ class SkeletonMaker:
         body_info = []
         
         body_info.append(self.bodyID)
-        self.bodyID += 1
         
         #해당 함수 이후 차후 수정 가능
         #clipedEdges
         body_info.append(0)
-        # print()
+        
         #handLeftConfidence
         if len(score_list) == 0 or score_list[7] <= 0.6:
             body_info.append(0)
@@ -206,10 +207,10 @@ class SkeletonMaker:
         
         #trackingState
         score_avg = np.mean(score_list)
-        if score_avg <= 0.6:
-            body_info.append(0)
-        else:
+        if score_avg > 0.3:
             body_info.append(2)
+        else:
+            body_info.append(0)
         
         
         return body_info 
