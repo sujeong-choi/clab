@@ -133,32 +133,41 @@ class SkeletonMaker:
         self.bodyID = 100000000000000000
         
     def gen_skeleton_file(self, frames) -> list:
-        file = []
+            file = []
+            
+            skeleton_list, score_list = self.skeleton_inference(frames)
         
-        skeleton_list, score_list = self.skeleton_inference(frames)
-        frame_num = len(skeleton_list)
-        file.append(self.translate_str(frame_num))
-        self.bodyID += 1
-        
-        for idx, skeleton in enumerate(skeleton_list):
-            body_cnt = 1
-            file.append(self.translate_str(body_cnt))
+            frame_num = len(skeleton_list)
+            file.append(self.translate_str(frame_num))
+            self.bodyID += 1
+
+            non_person =[]
+            for _ in range(25):
+                non_person.append([0.0,0.0,0.0])
             
+            for idx, skeleton in enumerate(skeleton_list):
+                # print("skeleton = ",skeleton)
+                if skeleton!=non_person: # sekeleton data가 있을때,
+                    body_cnt = 1
+                    file.append(self.translate_str(body_cnt))
+                    
+                    
+                    body_info = self.get_body_info(score_list[idx])
+                    file.append(self.translate_str(body_info))
+                    
+                    joint_num = 25
+                    file.append(self.translate_str(joint_num))
+                    
+                    for i in range(joint_num):
+                        if len(score_list[idx]) == 0 or score_list[idx][i] <= 0.6:
+                            other_joint = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0]  #차후 수정 가능
+                        else:
+                            other_joint = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 2]
+                        file.append(self.translate_str(skeleton[i] + other_joint))
+                else: # skeleton data가 모두 0으로 채워져있을때
+                    file.append('0\n') 
             
-            body_info = self.get_body_info(score_list[idx])
-            file.append(self.translate_str(body_info))
-            
-            joint_num = 25
-            file.append(self.translate_str(joint_num))
-            
-            for i in range(joint_num):
-                if len(score_list[idx]) == 0 or score_list[idx][i] <= 0.6:
-                    other_joint = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0]  #차후 수정 가능
-                else:
-                    other_joint = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 2]
-                file.append(self.translate_str(skeleton[i] + other_joint))
-        
-        return file
+            return file
                     
                 
         
