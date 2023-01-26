@@ -5,13 +5,13 @@ To train the PFD model, take the following steps:
 
 * Once you extract the dataset, open [keypoint_rcnn](./keypoint_rcnn.ipynb) and follow the instructions there. Make sure you have the following python dependencies installed:
     ```
-    numpy
-    torch
-    torchvision
-    matplotlib
-    pycocotools
-    opencv-python
-    albumentations
+    numpy==1.22.1
+    torch==1.13.1+cu116
+    torchvision==0.14.1+cu116
+    matplotlib==3.5.1
+    pycocotools==2.0.6
+    opencv-python==4.6.0.66
+    albumentations==1.3.0
     ```
 
 * Run each block of code and train the model
