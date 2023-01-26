@@ -9,6 +9,7 @@ To train the PFD model, take the following steps:
     torch
     torchvision
     matplotlib
+    pycocotools
     opencv-python
     albumentations
     ```
