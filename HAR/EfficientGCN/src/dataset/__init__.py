@@ -2,13 +2,15 @@ import logging
 
 from .graphs import Graph
 from .ntu_feeder import NTU_Feeder, NTU_Location_Feeder
+from .PoseModule import PoseDetector
+from .MakeSkeletonFile import FileController, SkeletonMaker
 
 
 __data_args = {
     'ntu-xsub': {'class': 60, 'shape': [3, 6, 300, 25, 2], 'feeder': NTU_Feeder},
     'ntu-xview': {'class': 60, 'shape': [3, 6, 300, 25, 2], 'feeder': NTU_Feeder},
-    'ntu-xsub120': {'class': 120, 'shape': [3, 6, 300, 25, 2], 'feeder': NTU_Feeder},
-    'ntu-xset120': {'class': 120, 'shape': [3, 6, 300, 25, 2], 'feeder': NTU_Feeder},
+    'ntu-xsub120': {'class': 121, 'shape': [3, 6, 300, 25, 2], 'feeder': NTU_Feeder},
+    'ntu-xset120': {'class': 121, 'shape': [3, 6, 300, 25, 2], 'feeder': NTU_Feeder},
 }
 
 def create(dataset, root_folder, transform, num_frame, inputs, **kwargs):

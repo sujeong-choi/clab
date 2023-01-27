@@ -624,6 +624,6 @@ EfficientGCN(
   (classifier): EfficientGCN_Classifier(
     (gap): AdaptiveAvgPool3d(output_size=1)
     (dropout): Dropout(p=0.25, inplace=True)
-    (fc): Conv3d(272, 60, kernel_size=(1, 1, 1), stride=(1, 1, 1))
+    (fc): Conv3d(272, 121, kernel_size=(1, 1, 1), stride=(1, 1, 1))
   )
 )
