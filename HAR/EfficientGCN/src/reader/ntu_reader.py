@@ -4,6 +4,8 @@ from tqdm import tqdm
 from .. import utils as U
 from .transformer import pre_normalization
 
+MAX_FRAME_NUM = 20
+used_actions = [5,6,7,8,9,12,13,23,25,31,34,35,36,39,40,44,45,46,47,67,69,70,71,72,73,76,77,80,82,83,95,96,97,98,101,104,112,121]
 
 class NTU_Reader():
     def __init__(self, args, root_folder, transform, ntu60_path, ntu120_path, **kwargs):
@@ -58,15 +60,23 @@ class NTU_Reader():
     def read_file(self, file_path):
         skeleton = np.zeros((self.max_person, self.max_frame, self.max_joint, self.max_channel), dtype=np.float32)
         with open(file_path, 'r') as fr:
-            frame_num = int(fr.readline())
+            frame_num = int(fr.readline()) # 원래 총 frame 수
+
+            # frame 수를 max보다 적어지도록 조정
+            gap = int(frame_num/MAX_FRAME_NUM)+1
+            frame_num /=MAX_FRAME_NUM
+            if frame_num%gap !=0: frame_num+=1
+
             for frame in range(frame_num):
                 person_num = int(fr.readline())
                 for person in range(person_num):
-                    person_info = fr.readline().strip().split()
+                    person_info = fr.readline().strip().split() # person ID
                     joint_num = int(fr.readline())
                     for joint in range(joint_num):
                         joint_info = fr.readline().strip().split()
                         skeleton[person,frame,joint,:] = np.array(joint_info[:self.max_channel], dtype=np.float32)
+                # gap-1 개의 frame 건너뜀.
+                for j in range((gap-1)*4):  fr.readline()
         return skeleton[:,:frame_num,:,:], frame_num
 
     def get_nonzero_std(self, s):  # (T,V,C)
@@ -99,34 +109,36 @@ class NTU_Reader():
             subject_id = int(filename[(subject_loc+1):(subject_loc+4)])
             action_class = int(filename[(action_loc+1):(action_loc+4)])
 
-            # Distinguish train or eval sample
-            if self.dataset == 'ntu-xview':
-                is_training_sample = (camera_id in self.training_sample)
-            elif self.dataset == 'ntu-xsub' or self.dataset == 'ntu-xsub120':
-                is_training_sample = (subject_id in self.training_sample)
-            elif self.dataset == 'ntu-xset120':
-                is_training_sample = (setup_id in self.training_sample)
-            else:
-                logging.info('')
-                logging.error('Error: Do NOT exist this dataset {}'.format(self.dataset))
-                raise ValueError()
-            if (phase == 'train' and not is_training_sample) or (phase == 'eval' and is_training_sample):
-                continue
+            if action_class in used_actions:
 
-            # Read one sample
-            data = np.zeros((self.max_channel, self.max_frame, self.max_joint, self.select_person_num), dtype=np.float32)
-            skeleton, frame_num = self.read_file(file_path)
-            
-            # Select person by max energy
-            energy = np.array([self.get_nonzero_std(skeleton[m]) for m in range(self.max_person)])
-            index = energy.argsort()[::-1][:self.select_person_num]
-            skeleton = skeleton[index]
-            data[:,:frame_num,:,:] = skeleton.transpose(3, 1, 2, 0)
+                # Distinguish train or eval sample
+                if self.dataset == 'ntu-xview':
+                    is_training_sample = (camera_id in self.training_sample)
+                elif self.dataset == 'ntu-xsub' or self.dataset == 'ntu-xsub120':
+                    is_training_sample = (subject_id in self.training_sample)
+                elif self.dataset == 'ntu-xset120':
+                    is_training_sample = (setup_id in self.training_sample)
+                else:
+                    logging.info('')
+                    logging.error('Error: Do NOT exist this dataset {}'.format(self.dataset))
+                    raise ValueError()
+                if (phase == 'train' and not is_training_sample) or (phase == 'eval' and is_training_sample):
+                    continue
 
-            sample_data.append(data)
-            sample_path.append(file_path)
-            sample_label.append(action_class - 1)  # to 0-indexed
-            sample_length.append(frame_num)
+                # Read one sample
+                data = np.zeros((self.max_channel, self.max_frame, self.max_joint, self.select_person_num), dtype=np.float32)
+                skeleton, frame_num = self.read_file(file_path)
+                
+                # Select person by max energy
+                energy = np.array([self.get_nonzero_std(skeleton[m]) for m in range(self.max_person)])
+                index = energy.argsort()[::-1][:self.select_person_num]
+                skeleton = skeleton[index]
+                data[:,:frame_num,:,:] = skeleton.transpose(3, 1, 2, 0)
+
+                sample_data.append(data)
+                sample_path.append(file_path)
+                sample_label.append(action_class - 1)  # to 0-indexed
+                sample_length.append(frame_num)
 
         # Save label
         with open('{}/{}_label.pkl'.format(self.out_path, phase), 'wb') as f:
