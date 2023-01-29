@@ -64,7 +64,7 @@ class NTU_Reader():
 
             # frame 수를 max보다 적어지도록 조정
             gap = int(frame_num/MAX_FRAME_NUM)+1
-            frame_num /=MAX_FRAME_NUM
+            frame_num = int(frame_num/MAX_FRAME_NUM)
             if frame_num%gap !=0: frame_num+=1
 
             for frame in range(frame_num):
@@ -77,7 +77,7 @@ class NTU_Reader():
                         skeleton[person,frame,joint,:] = np.array(joint_info[:self.max_channel], dtype=np.float32)
                 # gap-1 개의 frame 건너뜀.
                 for g in range((gap-1)):  
-                    person_num = fr.readline()
+                    person_num = int(fr.readline())
                     for j in range(person_num*27):
                         fr.readline()
         return skeleton[:,:frame_num,:,:], frame_num
