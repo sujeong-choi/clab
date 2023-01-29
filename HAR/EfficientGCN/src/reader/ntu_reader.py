@@ -76,7 +76,10 @@ class NTU_Reader():
                         joint_info = fr.readline().strip().split()
                         skeleton[person,frame,joint,:] = np.array(joint_info[:self.max_channel], dtype=np.float32)
                 # gap-1 개의 frame 건너뜀.
-                for j in range((gap-1)*4):  fr.readline()
+                for g in range((gap-1)):  
+                    person_num = fr.readline()
+                    for j in range(person_num*27):
+                        fr.readline()
         return skeleton[:,:frame_num,:,:], frame_num
 
     def get_nonzero_std(self, s):  # (T,V,C)
