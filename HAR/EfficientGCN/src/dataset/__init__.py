@@ -11,6 +11,8 @@ __data_args = {
     'ntu-xview': {'class': 60, 'shape': [3, 6, 300, 25, 2], 'feeder': NTU_Feeder},
     'ntu-xsub120': {'class': 121, 'shape': [3, 6, 300, 25, 2], 'feeder': NTU_Feeder},
     'ntu-xset120': {'class': 121, 'shape': [3, 6, 300, 25, 2], 'feeder': NTU_Feeder},
+    'ntu-xsub38': {'class': 38, 'shape': [3, 6, 300, 25, 2], 'feeder': NTU_Feeder},
+    'ntu-xset38': {'class': 38, 'shape': [3, 6, 300, 25, 2], 'feeder': NTU_Feeder},
 }
 
 def create(dataset, root_folder, transform, num_frame, inputs, **kwargs):
