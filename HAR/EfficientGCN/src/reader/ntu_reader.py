@@ -5,7 +5,7 @@ from .. import utils as U
 from .transformer import pre_normalization
 
 MAX_FRAME_NUM = 20
-used_actions = [5,6,7,8,9,12,13,23,25,31,34,35,36,39,40,44,45,46,47,67,69,70,71,72,73,76,77,80,82,83,95,96,97,98,101,104,112,121]
+
 
 class NTU_Reader():
     def __init__(self, args, root_folder, transform, ntu60_path, ntu120_path, **kwargs):
@@ -17,6 +17,12 @@ class NTU_Reader():
         self.dataset = args.dataset
         self.progress_bar = not args.no_progress_bar
         self.transform = transform
+
+        self.used_actions = [5,6,7,8,9,12,13,23,25,31,34,35,36,39,40,44,45,46,47,67,69,70,71,72,73,76,77,80,82,83,95,96,97,98,101,104,112,121]
+        self.C2O, self.O2C = dict(), dict()
+        for i in range(len(self.used_action)):
+            self.C2O[i+1]=self.used_actions[i]
+            self.O2C[self.used_actions[i]]=i+1
 
         # Set paths
         ntu_ignored = '{}/ignore.txt'.format(os.path.dirname(os.path.realpath(__file__)))
@@ -38,6 +44,8 @@ class NTU_Reader():
             80, 81, 82, 83, 84, 85, 86, 89, 91, 92, 93, 94, 95, 97, 98, 100, 103
         ]
         training_samples['ntu-xset120'] = set(range(2, 33, 2))
+
+        training_samples['ntu-xsub38']=training_samples['ntu-xsub120']
         self.training_sample = training_samples[self.dataset]
 
         # Get ignore samples
@@ -53,8 +61,13 @@ class NTU_Reader():
         self.file_list = []
         for folder in [ntu60_path, ntu120_path]:
             for filename in os.listdir(folder):
-                self.file_list.append((folder, filename))
-            if '120' not in self.dataset:  # for NTU 60, only one folder
+                if '38' in self.dataset:
+                    action_loc = filename.find('A')
+                    action_class = int(filename[(action_loc+1):(action_loc+4)])
+                    if action_class in self.used_actions:
+                        self.file_list.append((folder, filename))
+                else:   self.file_list.append((folder, filename))
+            if '120' not in self.dataset or '38' not in self.dataset:  # for NTU 60, only one folder
                 break
 
     def read_file(self, file_path):
@@ -110,38 +123,38 @@ class NTU_Reader():
             setup_id = int(filename[(setup_loc+1):(setup_loc+4)])
             camera_id = int(filename[(camera_loc+1):(camera_loc+4)])
             subject_id = int(filename[(subject_loc+1):(subject_loc+4)])
-            action_class = int(filename[(action_loc+1):(action_loc+4)])
+            action_class = self.O2C[int(filename[(action_loc+1):(action_loc+4)])]
 
-            if action_class in used_actions:
 
-                # Distinguish train or eval sample
-                if self.dataset == 'ntu-xview':
-                    is_training_sample = (camera_id in self.training_sample)
-                elif self.dataset == 'ntu-xsub' or self.dataset == 'ntu-xsub120':
-                    is_training_sample = (subject_id in self.training_sample)
-                elif self.dataset == 'ntu-xset120':
-                    is_training_sample = (setup_id in self.training_sample)
-                else:
-                    logging.info('')
-                    logging.error('Error: Do NOT exist this dataset {}'.format(self.dataset))
-                    raise ValueError()
-                if (phase == 'train' and not is_training_sample) or (phase == 'eval' and is_training_sample):
-                    continue
 
-                # Read one sample
-                data = np.zeros((self.max_channel, self.max_frame, self.max_joint, self.select_person_num), dtype=np.float32)
-                skeleton, frame_num = self.read_file(file_path)
-                
-                # Select person by max energy
-                energy = np.array([self.get_nonzero_std(skeleton[m]) for m in range(self.max_person)])
-                index = energy.argsort()[::-1][:self.select_person_num]
-                skeleton = skeleton[index]
-                data[:,:frame_num,:,:] = skeleton.transpose(3, 1, 2, 0)
+            # Distinguish train or eval sample
+            if self.dataset == 'ntu-xview':
+                is_training_sample = (camera_id in self.training_sample)
+            elif self.dataset == 'ntu-xsub' or self.dataset == 'ntu-xsub120' or self.dataset=='ntu-xsub38':
+                is_training_sample = (subject_id in self.training_sample)
+            elif self.dataset == 'ntu-xset120':
+                is_training_sample = (setup_id in self.training_sample)
+            else:
+                logging.info('')
+                logging.error('Error: Do NOT exist this dataset {}'.format(self.dataset))
+                raise ValueError()
+            if (phase == 'train' and not is_training_sample) or (phase == 'eval' and is_training_sample):
+                continue
 
-                sample_data.append(data)
-                sample_path.append(file_path)
-                sample_label.append(action_class - 1)  # to 0-indexed
-                sample_length.append(frame_num)
+            # Read one sample
+            data = np.zeros((self.max_channel, self.max_frame, self.max_joint, self.select_person_num), dtype=np.float32)
+            skeleton, frame_num = self.read_file(file_path)
+            
+            # Select person by max energy
+            energy = np.array([self.get_nonzero_std(skeleton[m]) for m in range(self.max_person)])
+            index = energy.argsort()[::-1][:self.select_person_num]
+            skeleton = skeleton[index]
+            data[:,:frame_num,:,:] = skeleton.transpose(3, 1, 2, 0)
+
+            sample_data.append(data)
+            sample_path.append(file_path)
+            sample_label.append(action_class - 1)  # to 0-indexed
+            sample_length.append(frame_num)
 
         # Save label
         with open('{}/{}_label.pkl'.format(self.out_path, phase), 'wb') as f:
