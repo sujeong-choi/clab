@@ -41,14 +41,14 @@ from .dataset import Graph
 #         ]
 
 action_names = [
-            'drop 5', 'pickup 6', 'throw 7', 'sitting down 8', 'standing up 9','writing 12', 
-            'tear up paper 13','put/take out sth 25', 'hand waving 23','pointing to sth with finger 31','rub two hands together 34',
-            'nod head/bow 35', 'shake head 36','put the palms together 39', 'cross hands in front 40', 'touch head 44',
-            'touch chest 45', 'touch back 46', 'touch neck 47', 'hush (quite) 67','thumb up 69', 
-            'thumb down 70', 'make ok sign 71', 'make victory sign 72', 'staple book 73','cutting paper (using scissors) 76', 
-            'snapping fingers 77', 'squat down 80', 'fold paper 82', 'ball up paper 83', 'hands up (both hands) 95',
-            'cross arms 96', 'arm circles 97', 'arm swings 98','cross toe touch 101', 'stretch oneself 104',
-            'high-five 112', 'Painting 121'
+            'drop 5-1', 'pickup 6-2', 'throw 7-3', 'sitting down 8-4', 'standing up 9-5','writing 12-6', 
+            'tear up paper 13-7','put/take out sth 25-8', 'hand waving 23-9','pointing to sth with finger 31-10','rub two hands together 34-11',
+            'nod head/bow 35-12', 'shake head 36-13','put the palms together 39-14', 'cross hands in front 40-15', 'touch head 44-16',
+            'touch chest 45-17', 'touch back 46-18', 'touch neck 47-19', 'hush (quite) 67-20','thumb up 69-21', 
+            'thumb down 70-22', 'make ok sign 71-23', 'make victory sign 72-24', 'staple book 73-25','cutting paper (using scissors) 76-26', 
+            'snapping fingers 77-27', 'squat down 80-28', 'fold paper 82-29', 'ball up paper 83-30', 'hands up (both hands) 95-31',
+            'cross arms 96-32', 'arm circles 97-33', 'arm swings 98-34','cross toe touch 101-35', 'stretch oneself 104-36',
+            'high-five 112-37', 'Painting 121-38'
         ]
 
 
@@ -96,7 +96,7 @@ class Runner(Initializer):
         T = self.args.dataset_args['ntu']['num_frame']
         inputs = self.args.dataset_args['ntu']['inputs']
         self.data_shape = [3, 6, T, 25, 2]
-        self.num_class = 121
+        self.num_class = 38 #121
         
         for idx, (frames, _) in tqdm(enumerate(self.videoFiles)):
             skeleton, __ = self.skeletonMaker.skeleton_inference(frames)
