@@ -110,3 +110,6 @@ def update_parameters(parser, args):
 if __name__ == '__main__':
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
     main()
+# for 38
+# generate dataset : python main.py -c 2038 -gd
+# training :  python main.py -c 2023 -g 0 --label 38
