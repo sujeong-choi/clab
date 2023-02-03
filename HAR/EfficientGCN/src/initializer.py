@@ -68,7 +68,7 @@ class Initializer():
                 meminfo = pynvml.nvmlDeviceGetMemoryInfo(handle)
                 memused = meminfo.used / 1024 / 1024
                 logging.info('GPU-{} used: {}MB'.format(i, memused))
-                if memused > 1000:
+                
                     pynvml.nvmlShutdown()
                     logging.info('')
                     logging.error('GPU-{} is occupied!'.format(i))

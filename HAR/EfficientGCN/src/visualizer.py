@@ -27,6 +27,7 @@ class Visualizer():
             'giving sth to other person 56', 'touch other person pocket 57', 'handshaking 58',
             'walking towards each other 59', 'walking apart from each other 60'
         ]
+       
         self.action_names['cmu'] = [
             'walking 1', 'running 2', 'directing_traffic 3', 'soccer 4',
             'basketball 5', 'washwindow 6', 'jumping 7', 'basketball_signal 8'
