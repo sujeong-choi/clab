@@ -5,6 +5,7 @@ from src.generator import Generator
 from src.processor import Processor
 from src.visualizer import Visualizer
 from src.Runner import Runner
+from src.dataset.PoseModule import make_skeleton_videos
 
 
 def main():
@@ -32,6 +33,9 @@ def main():
     elif args.runner:
         r = Runner(args)
         r.run()
+        
+    elif args.visualize_skeleton:
+        make_skeleton_videos(args)
 
     else:
         p = Processor(args)
@@ -79,13 +83,14 @@ def init_parser():
     parser.add_argument('--lr_scheduler', '-ls', type=str, default='', help='Initial learning rate scheduler')
     parser.add_argument('--scheduler_args', default=dict(), help='Args for scheduler')
 
-    #Runner
+    # Runner & Debug
     parser.add_argument('--runner', '-run', default=False, action='store_true', help='Testing runner')
     parser.add_argument('--video', '-vp', type=str, default='', help='videos/url')
     parser.add_argument('--fps', type=int, default=10, help='frame extraction count per sec')
     parser.add_argument('--short-side', type=int, default=480, help='specify the short-side length of the image')
     parser.add_argument('--complexity', type=int, default=1, choices=range(0, 3), help='Complexity of the pose landmark model: 0, 1 or 2. Landmark accuracy as well as inference latency generally go up with the model complexity. Default to 1.')
     parser.add_argument('--label', type=int, default=121)
+    parser.add_argument('--visualize_skeleton', '-vsk', default=False, action='store_true', help='Make skeleton added videos')
     
     return parser
 
