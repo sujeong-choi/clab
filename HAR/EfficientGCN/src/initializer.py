@@ -68,13 +68,12 @@ class Initializer():
                 meminfo = pynvml.nvmlDeviceGetMemoryInfo(handle)
                 memused = meminfo.used / 1024 / 1024
                 logging.info('GPU-{} used: {}MB'.format(i, memused))
-                if memused > 1000:
+                if memused > 2000:
                     pynvml.nvmlShutdown()
                     logging.info('')
                     logging.error('GPU-{} is occupied!'.format(i))
                     raise ValueError()
             pynvml.nvmlShutdown()
-            
             self.output_device = self.args.gpus[0]
             self.device =  torch.device('cuda:{}'.format(self.output_device))
             torch.cuda.set_device(self.output_device)

@@ -44,12 +44,13 @@ class NTU_Reader():
         ]
         training_samples['ntu-xset120'] = set(range(2, 33, 2))
 
-        training_samples['ntu-xsub38']=training_samples['ntu-xsub120'] # training : count = 20322 / testing : count = 16484
+        training_samples['ntu-xset38']=training_samples['ntu-xset120'] # training : count = 20,357 / testing : count = 17,401
 
         '''
         all = {0: 15, 1: 4, 2: 10, 3: 11, 4: 15, 5: 1, 6: 2, 7: 15, 8: 10, 9: 15, 10: 4, 11: 6, 12: 15, 13: 4, 14: 14, 15: 15, 16: 15, 17: 2, 18: 15, 19: 15, 20: 15, 21: 15, 22: 10, 23: 15, 24: 7, 25: 15, 26: 15, 27: 15, 28: 15, 29: 15, 30: 15, 31: 15, 32: 15, 33: 15, 34: 15, 35: 15, 36: 15, 37: 15, 38: 15, 39: 15, 40: 15, 41: 15, 42: 15, 43: 15, 44: 15, 45: 15, 46: 15, 47: 15, 48: 15, 49: 15, 50: 15, 51: 15, 52: 15, 53: 15, 54: 15, 55: 15, 56: 15, 57: 15, 58: 15, 59: 15, 60: 15, 61: 15, 62: 15, 63: 15, 64: 15, 65: 15, 66: 15, 67: 15, 68: 15, 69: 15, 70: 15, 71: 15, 72: 15, 73: 15, 74: 15, 75: 15, 76: 15, 77: 15, 78: 15, 79: 15, 80: 15, 81: 15, 82: 15, 83: 15, 84: 15, 85: 15, 86: 15, 87: 15, 88: 15, 89: 15, 90: 15, 91: 15, 92: 15, 93: 15, 94: 15, 95: 15, 96: 15, 97: 15, 98: 15, 99: 15, 100: 15, 101: 15, 102: 15, 103: 15, 104: 3, 105: 15, 106: 1, 107: 2, 108: 13, 109: 15, 110: 15, 111: 15, 112: 1, 113: 15, 114: 15, 115: 15, 116: 15, 117: 15, 118: 15, 119: 15, 120: 10, 121: 14}
         painting = {0: 15, 1: 4, 2: 10, 3: 11, 4: 15, 5: 1, 6: 2, 7: 15, 8: 10, 9: 15, 10: 4, 11: 6, 12: 15, 13: 4, 14: 14, 15: 15, 16: 15, 17: 2, 18: 15, 19: 15, 20: 15, 21: 15, 22: 10, 23: 15, 24: 7, 25: 15, 26: 15, 27: 15, 28: 15, 29: 15, 30: 15, 31: 15, 32: 15, 33: 15, 34: 15, 35: 15, 36: 15, 37: 15, 38: 15, 39: 15, 40: 15, 41: 15, 42: 15, 43: 15, 44: 15, 45: 15, 46: 15, 47: 15, 48: 15, 49: 15, 50: 15, 51: 15, 52: 15, 53: 15, 54: 15, 55: 15, 56: 15, 57: 15, 58: 15, 59: 15, 60: 15, 61: 15, 62: 15, 63: 15, 64: 15, 65: 15, 66: 15, 67: 15, 68: 15, 69: 15, 70: 15, 71: 15, 72: 15, 73: 15, 74: 15, 75: 15, 76: 15, 77: 15, 78: 15, 79: 15, 80: 15, 81: 15, 82: 15, 83: 15, 84: 15, 85: 15, 86: 15, 87: 15, 88: 15, 89: 15, 90: 15, 91: 15, 92: 15, 93: 15, 94: 15, 95: 15, 96: 15, 97: 15, 98: 15, 99: 15, 100: 15, 101: 15, 102: 15, 103: 15, 104: 3, 105: 15, 106: 1, 107: 2, 108: 13, 109: 15, 110: 15, 111: 15, 112: 1, 113: 15, 114: 15, 115: 15, 116: 15, 117: 15, 118: 15, 119: 15, 120: 10, 121: 14}
         '''
+        print(f"self.dataset = {self.dataset}")
         self.training_sample = training_samples[self.dataset]
 
         # Get ignore samples
@@ -87,9 +88,6 @@ class NTU_Reader():
                 gap = GAP
                 frame_num = int(frame_num/gap)
             
-
-            # print(f"원래 frame 수 ={ori_frame_num}  >>>> 바뀐 frame 수 = {frame_num}\n")
-
             for frame in range(frame_num):
                 person_num = int(fr.readline())
                 for person in range(person_num):
@@ -115,7 +113,7 @@ class NTU_Reader():
         return s
 
     def gendata(self, phase):
-        # count = 0
+        count = 0
         sample_data = []
         sample_label = []
         sample_path = []
@@ -143,9 +141,9 @@ class NTU_Reader():
             # Distinguish train or eval sample
             if self.dataset == 'ntu-xview':
                 is_training_sample = (camera_id in self.training_sample)
-            elif self.dataset == 'ntu-xsub' or self.dataset == 'ntu-xsub120' or self.dataset=='ntu-xsub38':
+            elif self.dataset == 'ntu-xsub' or self.dataset == 'ntu-xsub120':
                 is_training_sample = (subject_id in self.training_sample)
-            elif self.dataset == 'ntu-xset120':
+            elif self.dataset == 'ntu-xset120' or self.dataset=='ntu-xset38':
                 is_training_sample = (setup_id in self.training_sample)
             else:
                 logging.info('')
@@ -170,8 +168,8 @@ class NTU_Reader():
             sample_length.append(frame_num)
             if subject_id not in check : check[subject_id]=1
             else : check[subject_id]+=1
-        #     count+=1
-        # print(f"count = {count}\n")
+            count+=1
+        print(f"count = {count}\n")
 
         # Save label
         with open('{}/{}_label.pkl'.format(self.out_path, phase), 'wb') as f:
