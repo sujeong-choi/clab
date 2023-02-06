@@ -41,8 +41,8 @@ from .dataset import Graph
 #         ]
 
 action_names = [
-            'drop 5-1', 'pickup 6-2', 'throw 7-3', 'sitting down 8-4', 'standing up 9-5','writing 12-6', 
-            'tear up paper 13-7','put/take out sth 25-8', 'hand waving 23-9','pointing to sth with finger 31-10','rub two hands together 34-11',
+            'writing 12-6', 
+            'hand waving 23-9','pointing to sth with finger 31-10','rub two hands together 34-11',
             'nod head/bow 35-12', 'shake head 36-13','put the palms together 39-14', 'cross hands in front 40-15', 'touch head 44-16',
             'touch chest 45-17', 'touch back 46-18', 'touch neck 47-19', 'hush (quite) 67-20','thumb up 69-21', 
             'thumb down 70-22', 'make ok sign 71-23', 'make victory sign 72-24', 'staple book 73-25','cutting paper (using scissors) 76-26', 
@@ -50,6 +50,7 @@ action_names = [
             'cross arms 96-32', 'arm circles 97-33', 'arm swings 98-34','cross toe touch 101-35', 'stretch oneself 104-36',
             'high-five 112-37', 'Painting 121-38'
         ]
+# action_names = ['painting','Staring','other thing'] # 2/6
 
 
 class Runner(Initializer):
@@ -96,7 +97,7 @@ class Runner(Initializer):
         T = self.args.dataset_args['ntu']['num_frame']
         inputs = self.args.dataset_args['ntu']['inputs']
         self.data_shape = [3, 6, T, 25, 2]
-        self.num_class = 38 #121
+        self.num_class = 3 #38 #121 # 2/6
         
         for idx, (frames, _) in tqdm(enumerate(self.videoFiles)):
             skeleton, __ = self.skeletonMaker.skeleton_inference(frames)
