@@ -47,6 +47,23 @@ class Graph():
                 np.array([17, 18, 19, 20]) - 1,         # right_leg
                 np.array([1, 2, 3, 4, 21]) - 1          # torso
             ]
+        elif self.dataset == 'mediapipe': # 2/6 
+            num_node = 25
+            neighbor_1base = [(0,1), (1,2), (2,3), (3,7),
+                              (0,4), (4,5), (5,6), (6,8),
+                              (9,10), (11,12),
+                              (11,13), (13,15), (15,21), (15,17), (15,19), (17,19),
+                              (12,14), (14,16), (16,22), (16,18), (16,20), (18,20),
+                              (11,23), (12,24), (23,24)]
+            neighbor_link = neighbor_1base
+            parts = [
+                np.array([0,1,2,3,4,5,6,7,8]), # eye
+                np.array([10,9]),              # mouse
+                np.array([13,15,17,19,21]),    # left body
+                np.array([14,16,18,20,22]),    # right body 
+                np.array([11,12,23,24])        # torso 
+            ]
+
         elif self.dataset == 'sysu':
             num_node = 20
             neighbor_1base = [(1, 2), (2, 3), (3, 4), (3, 5), (5, 6),
@@ -121,7 +138,7 @@ class Graph():
         for i, j in self.edge:
             A[j, i] = 1
             A[i, j] = 1
-        hop_dis = np.zeros((self.num_node, self.num_node)) + np.inf
+        hop_dis = np.zeros((self.num_node, self.num_node)) + np.inf # 무한대
         transfer_mat = [np.linalg.matrix_power(A, d) for d in range(self.max_hop + 1)]
         arrive_mat = (np.stack(transfer_mat) > 0)
         for d in range(self.max_hop, -1, -1):

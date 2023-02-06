@@ -2,7 +2,8 @@ import cv2
 import mediapipe as mp
 import time
 import numpy as np
-
+import os
+from tqdm import tqdm
 class PoseDetector():
     def __init__(self, mode=False, complexity=1, smooth=True, 
                  segmentation=False, detectConf=0.5, trackConf=0.5) -> None:
@@ -32,52 +33,36 @@ class PoseDetector():
 
                 
     #skeleton point list 반환(idx, x, y, visibility) 
-    def getPoints(self):
+    def getPoints(self, frame):
         lm = []
-        cc = []
         if self.results.pose_landmarks:
+            self.mpDraw.draw_landmarks(frame,  self.results.pose_landmarks, self.mpPose.POSE_CONNECTIONS)
             for idx, landmark in enumerate(self.results.pose_landmarks.landmark):
                 #landmark의 결과로 나오는 x,y,z는 각 frame에서의 위치에 대한 비율값이므로 이를 변환
-                if idx>29: # cc로 변환하는 경우 
-                    break
                 cx, cy = int(landmark.x * self.w), int(landmark.y * self.h)
                 # 2차원
                 lm.append([cx, cy, landmark.visibility])
-                        
-            cc = self.MP2CC(lm)
-
         else:
-            for _ in range(17):
-                cc.append([0, 0, 0.0])
-
-        
-        keypoint_arr = np.array(cc,dtype=np.float32)
-        keypoint_dict = {'keypoints':keypoint_arr }
-                            
-        return [keypoint_dict] 
+            for _ in range(33):
+                lm.append([0, 0, 0.0])
+                       
+        return frame, np.array(lm)
     
     #skeleton world point list 반환(idx, x, y, visibility)
     #엉덩이 쪽 좌표를 0,0,0으로 두고 계산한 2D 공간 좌표
     def getWorldPoints(self):
         lm = []
-        cc = []
         if self.results.pose_world_landmarks:
             for idx, landmark in enumerate(self.results.pose_world_landmarks.landmark):
-                if idx>29:
-                    break
-
                 lm.append([landmark.x, landmark.y, landmark.visibility])
-
-            cc=self.MP2CC(lm)            
             
         else:
-            for _ in range(17):
-                cc.append([0.0,0.0,0.0])
-
-        coco_array = np.array(cc,dtype=np.float32)
-        landmark_dict = {'keypoints':coco_array }
+            for _ in range(33):
+                lm.append([0.0,0.0,0.0])
+        # lm_array = np.array(lm,dtype=np.float32)
+        # landmark_dict = {'keypoints':lm_array}
                         
-        return [landmark_dict]
+        return lm
 
     def get3DPoints(self):
         lm = []
@@ -95,6 +80,9 @@ class PoseDetector():
                 ntu.append([0.0,0.0,0.0])
         return ntu, landmark_score
 
+    def get_visibility():
+        return 
+    
     def MP2CC(self,lm):
         cc=[]
         idx = [0,2,5,7,8,11,12,13,14,15,16,23,24,25,26,27,28]
@@ -160,41 +148,44 @@ def resize_wh(frame, short_side=256):
 
 
     return fix_w, fix_h
-           
-def main():
-    video_name = "A3XCZ5Ow6A8_0_45.mp4"
-    cap = cv2.VideoCapture("videos/clip video/"+video_name)
-    Detector = PoseDetector(complexity=1)  
+
+def make_skeleton_videos(args):
+    video_path = args.video
+    video_list = [file for file in os.listdir(video_path) if file.endswith(".mp4")]
+    Detector = PoseDetector(complexity=1, detectConf=0.7, trackConf=0.7)
     
+    for idx in tqdm(range(len(video_list))):
+        visibility_list = []
+        cap = cv2.VideoCapture(video_path + '/' + video_list[idx])
 
-    flag, frame = cap.read()
-    fps = int(cap.get(cv2.CAP_PROP_FPS))
-    fix_w, fix_h = resize_wh(frame)
-    fourcc = cv2.VideoWriter_fourcc(*'MP4V')
-    writer = cv2.VideoWriter("videos/skeleton_added/"+video_name, fourcc, fps, (fix_w, fix_h), True) 
-         
-    prev_time = 0
-    
-    while flag:
-        resize_frame = cv2.resize(frame, (fix_w, fix_h), interpolation=cv2.INTER_AREA)
-        resize_frame = Detector.findPose(resize_frame, False)        
-        
-        Detector.getWorldPoints(resize_frame, True)
-        
-        cur_time = time.time()
-        fps = 1/(cur_time-prev_time)
-        prev_time = cur_time
-
-        cv2.putText(resize_frame, str(int(fps)),(70,50),cv2.FONT_HERSHEY_PLAIN, 4 ,(255,0,0),3)
-
-        cv2.imshow("Frame", resize_frame)
-        writer.write(cv2.resize(resize_frame, (fix_w, fix_h)))
-        cv2.waitKey(1)
         flag, frame = cap.read()
-    
-    cap.release()
-    writer.release()
-    cv2.destroyAllWindows()
+        fps = int(cap.get(cv2.CAP_PROP_FPS))
+        fix_w, fix_h = resize_wh(frame)
+        fourcc = cv2.VideoWriter_fourcc(*'MP4V')
+        writer = cv2.VideoWriter(video_path + '/skelton_added_videos/' + video_list[idx], fourcc, fps, (fix_w, fix_h), True) 
+            
+        prev_time = 0
+        
+        while flag:
+            resize_frame = cv2.resize(frame, (fix_w, fix_h), interpolation=cv2.INTER_AREA)
+            resize_frame = Detector.findPose(resize_frame)        
+            frame, landmark_info = Detector.getPoints(resize_frame)
 
-if __name__ == "__main__":
-    main()
+            
+            cur_time = time.time()
+            fps = 1/(cur_time-prev_time)
+            prev_time = cur_time
+            cv2.putText(resize_frame, str(int(fps)),(70,50),cv2.FONT_HERSHEY_PLAIN, 3 ,(255,0,0),3)
+
+            avg_visbility = sum(landmark_info[:,2]) / len(landmark_info)
+            visibility_list.append(avg_visbility)
+            cv2.putText(resize_frame, str(float(avg_visbility)),(70,130),cv2.FONT_HERSHEY_PLAIN, 3 ,(255,0,0),3)  
+
+            writer.write(cv2.resize(resize_frame, (fix_w, fix_h)))
+            cv2.waitKey(1)
+            flag, frame = cap.read()
+        print(video_list[idx]+":"+str(sum(visibility_list) / len(visibility_list)))
+        cap.release()
+        writer.release()
+        cv2.destroyAllWindows()
+     

@@ -13,6 +13,7 @@ __data_args = {
     'ntu-xset120': {'class': 121, 'shape': [3, 6, 300, 25, 2], 'feeder': NTU_Feeder},
     'ntu-xsub38': {'class': 38, 'shape': [3, 6, 300, 25, 2], 'feeder': NTU_Feeder},
     'ntu-xset38': {'class': 38, 'shape': [3, 6, 300, 25, 2], 'feeder': NTU_Feeder},
+    'mediapipe-xset':{'class':3, 'shape':[3, 6, 300, 25, 2], 'feeder': NTU_Feeder}, # 2/6
 }
 
 def create(dataset, root_folder, transform, num_frame, inputs, **kwargs):
@@ -39,6 +40,6 @@ def create(dataset, root_folder, transform, num_frame, inputs, **kwargs):
         'train': data_args['feeder']('train', **kwargs),
         'eval' : data_args['feeder']('eval', **kwargs),
     }
-    if 'ntu' in dataset:
+    if ('ntu' in dataset) or ('mediapipe' in dataset) : # 2/6
         feeders.update({'location': NTU_Location_Feeder(data_args['shape'])})
     return feeders, data_args['shape'], data_args['class'], graph.A, graph.parts

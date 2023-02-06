@@ -5,6 +5,7 @@ from .ntu_reader import NTU_Reader
 
 __generator = {
     'ntu': NTU_Reader,
+    'mediapipe':NTU_Reader, # 2/6
 }
 
 def create(args):
