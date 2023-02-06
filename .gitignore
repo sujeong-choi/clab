@@ -19,3 +19,6 @@ HAR/MainCode/data/kinetics700/
 # PFD ignore
 __pycache__
 assets
+
+# Android
+.gradle
