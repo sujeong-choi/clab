@@ -112,4 +112,5 @@ if __name__ == '__main__':
     main()
 # for 38
 # generate dataset : python main.py -c 2038 -gd
-# training :  python main.py -c 2038 -g 0 --label 38
+# training :  python main.py -c 2038 -g 1 --label 38
+# testing :  python main.py -c 2038 -run -vp videos/test -g 1 --fps 30
