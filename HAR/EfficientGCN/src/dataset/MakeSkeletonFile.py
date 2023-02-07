@@ -147,7 +147,7 @@ class FileController:
         file_name = "S{0:03d}C001P{1:03d}R001A{2:03d}.skeleton".format(self.out_P_dict[frame_name]['S'], self.out_P_dict[frame_name]['P'], self.label)
         return file_name
 
-    def write_videos(self, idx: int, top1, top5) -> None:
+    def write_videos(self, idx: int, top1, top3) -> None:
         video = self.video_list[idx]
 
         frame_path = 'video_out/' + video
@@ -164,14 +164,14 @@ class FileController:
 
             cv2.putText(frame, top1, (10, 30), FONTFACE, FONTSCALE,
                     FONTCOLOR, THICKNESS, LINETYPE)  
-            cv2.putText(frame, top5[1], (10, 60), FONTFACE, FONTSCALE,
+            cv2.putText(frame, top3[1], (10, 60), FONTFACE, FONTSCALE,
                     FONTCOLOR, THICKNESS, LINETYPE)   
-            cv2.putText(frame, top5[2], (10, 90), FONTFACE, FONTSCALE,
+            cv2.putText(frame, top3[2], (10, 90), FONTFACE, FONTSCALE,
                     FONTCOLOR, THICKNESS, LINETYPE)   
-            cv2.putText(frame, top5[3], (10, 120), FONTFACE, FONTSCALE,
-                    FONTCOLOR, THICKNESS, LINETYPE)   
-            cv2.putText(frame, top5[4], (10, 150), FONTFACE, FONTSCALE,
-                    FONTCOLOR, THICKNESS, LINETYPE)   
+            # cv2.putText(frame, top5[3], (10, 120), FONTFACE, FONTSCALE,
+            #         FONTCOLOR, THICKNESS, LINETYPE)   
+            # cv2.putText(frame, top5[4], (10, 150), FONTFACE, FONTSCALE,
+            #         FONTCOLOR, THICKNESS, LINETYPE)   
             writer.write(frame) 
             flag, frame = vid.read()
 

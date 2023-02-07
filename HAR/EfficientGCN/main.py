@@ -121,20 +121,11 @@ if __name__ == '__main__':
     main()
 # for 38
 # generate dataset : python main.py -c 2038 -gd
-# training :  python main.py -c 2038 -g 0 --label 38
+
+# training :  python main.py -c 2038 -g 0 --label 38# training :  python main.py -c 2038 -g 1 --label 38
+# testing :  python main.py -c 2038 -run -vp videos/test -g 1 --fps 30
 # generate skeleton files: python main.py -c 2038 -gs -vp videos/painting4sec --lebel 0     ## 0:painting, 1: interview, 2:pause ##
 # generate skeleton added video files: python main.py -c 2038 -vsk -vp videos/painting4sec
 
 
-"""
-한일
-1. 신뢰도에 따른 mediapipe skeleton 정제 코드 -> makeskeleton.py
-    -> 모델 threshold=0.75  /  평균 visibility0.75이상
 
-2. mediapipe 돌릴때, 좌우반전 적용
-3. 하반신 제외
-
-------
-할일
-4. ntu 말고 mediapipe 형식 skeleton...?
-"""
