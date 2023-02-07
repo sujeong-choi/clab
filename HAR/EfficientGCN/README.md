@@ -21,9 +21,9 @@ There are 302 samples of **NTU RGB+D 60** and 532 samples of **NTU RGB+D 120** n
 
 #### dataset configuration
 
-painting 500 * 2 ( augmentation )
-Staring 500 * 2 ( augmentation )
-nothing 900 ( from ntu dataset )
+* painting 500 * 2 ( augmentation )
+* Staring 500 * 2 ( augmentation )
+* nothing 900 ( from ntu dataset )
 
 #### classes for nothing
 * selection criteria : Actions that can come out except painting and interview(staring) in a drawing environment
