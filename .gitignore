@@ -13,6 +13,9 @@ __pycache__
 
 /videoClip
 
+*.npy
+*.pkl
+*.zip
 
 HAR/MainCode/data/kinetics700/
 

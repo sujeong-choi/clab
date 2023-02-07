@@ -99,7 +99,7 @@ class Runner(Initializer):
         self.num_class = 38 #121
         
         for idx, (frames, _) in tqdm(enumerate(self.videoFiles)):
-            skeleton, __ = self.skeletonMaker.skeleton_inference(frames)
+            skeleton, _, _ = self.skeletonMaker.skeleton_inference(frames)
             
             skeleton_list = np.array([skeleton])
             skeleton_list = np.append(skeleton_list, zero_arr[:,:len(frames),:,:],axis=0)
