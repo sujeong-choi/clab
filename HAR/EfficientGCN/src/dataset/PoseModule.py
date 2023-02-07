@@ -28,42 +28,69 @@ class PoseDetector():
         frame_RGB = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         self.results = self.pose.process(frame_RGB)
         self.h, self.w, _ = frame.shape
-          
-        return frame
 
-                
-    #skeleton point list 반환(idx, x, y, visibility) 
-    def getPoints(self, frame):
+    #skeleton point list 반환(키포인트 리스트, 신뢰도 리스트, 신뢰도 평균) 
+    #is_draw가 ture일시 입력받은 frame에서 keypoint 출력
+    def getPoints(self, frame, is_draw=False):
         lm = []
+        visibility_list = []
         if self.results.pose_landmarks:
-            self.mpDraw.draw_landmarks(frame,  self.results.pose_landmarks, self.mpPose.POSE_CONNECTIONS)
+            if is_draw:
+                self.mpDraw.draw_landmarks(frame,  self.results.pose_landmarks, self.mpPose.POSE_CONNECTIONS)
             for idx, landmark in enumerate(self.results.pose_landmarks.landmark):
                 #landmark의 결과로 나오는 x,y,z는 각 frame에서의 위치에 대한 비율값이므로 이를 변환
                 cx, cy = int(landmark.x * self.w), int(landmark.y * self.h)
                 # 2차원
-                lm.append([cx, cy, landmark.visibility])
+                lm.append([cx, cy])
+                visibility_list.append(landmark.visibility)
         else:
             for _ in range(33):
-                lm.append([0, 0, 0.0])
+                lm.append([0, 0])
+                visibility_list.append(0.0)
                        
-        return frame, np.array(lm)
+        return lm, visibility_list, sum(visibility_list)/len(visibility_list)
     
-    #skeleton world point list 반환(idx, x, y, visibility)
-    #엉덩이 쪽 좌표를 0,0,0으로 두고 계산한 2D 공간 좌표
+    #skeleton world point list 반환(키포인트 리스트, 신뢰도 리스트, 신뢰도 평균)
+    #엉덩이 쪽 좌표를 0,0,0으로 두고 계산한 3D 공간 좌표
     def getWorldPoints(self):
         lm = []
+        visibility_list = []
         if self.results.pose_world_landmarks:
             for idx, landmark in enumerate(self.results.pose_world_landmarks.landmark):
-                lm.append([landmark.x, landmark.y, landmark.visibility])
+                lm.append([landmark.x, landmark.y, landmark.z])
+                visibility_list.append(landmark.visibility)
             
         else:
             for _ in range(33):
                 lm.append([0.0,0.0,0.0])
-        # lm_array = np.array(lm,dtype=np.float32)
-        # landmark_dict = {'keypoints':lm_array}
-                        
-        return lm
+                visibility_list.append(0.0)
 
+                        
+        return lm, visibility_list, sum(visibility_list)/len(visibility_list)
+    
+    #skeleton world point list 반환(키포인트 리스트, 신뢰도 리스트, 신뢰도 평균)
+    #엉덩이 쪽 좌표를 0,0,0으로 두고 계산한 상체의 3D 공간 좌표
+    def getUpperWorldPoints(self):
+        lm = []
+        visibility_list = []
+        if self.results.pose_world_landmarks:
+            for idx, landmark in enumerate(self.results.pose_world_landmarks.landmark):
+                if idx >= 25:
+                    break
+                if landmark.visibility >= 0.75:
+                    lm.append([landmark.x, landmark.y, landmark.z])
+                else:
+                    lm.append([0.0,0.0,0.0])
+                visibility_list.append(landmark.visibility)
+            
+        else:
+            for _ in range(25):
+                lm.append([0.0,0.0,0.0])
+                visibility_list.append(0.0)
+
+                        
+        return lm, visibility_list, sum(visibility_list)/len(visibility_list)
+    
     def get3DPoints(self):
         lm = []
         ntu = []
@@ -79,9 +106,6 @@ class PoseDetector():
             for _ in range(25):
                 ntu.append([0.0,0.0,0.0])
         return ntu, landmark_score
-
-    def get_visibility():
-        return 
     
     def MP2CC(self,lm):
         cc=[]
@@ -152,38 +176,45 @@ def resize_wh(frame, short_side=256):
 def make_skeleton_videos(args):
     video_path = args.video
     video_list = [file for file in os.listdir(video_path) if file.endswith(".mp4")]
-    Detector = PoseDetector(complexity=1, detectConf=0.7, trackConf=0.7)
+    out_path = video_path + '/skelton_added_videos/'
+    if not os.path.exists(out_path):
+        os.mkdir(out_path)
+    Detector = PoseDetector(complexity=1, detectConf=0.5, trackConf=0.5)
+    # Detector = PoseDetector(complexity=1)
     
     for idx in tqdm(range(len(video_list))):
-        visibility_list = []
-        cap = cv2.VideoCapture(video_path + '/' + video_list[idx])
+        try:
+            visibility_list = []
+            cap = cv2.VideoCapture(video_path + '/' + video_list[idx])
 
-        flag, frame = cap.read()
-        fps = int(cap.get(cv2.CAP_PROP_FPS))
-        fix_w, fix_h = resize_wh(frame)
-        fourcc = cv2.VideoWriter_fourcc(*'MP4V')
-        writer = cv2.VideoWriter(video_path + '/skelton_added_videos/' + video_list[idx], fourcc, fps, (fix_w, fix_h), True) 
-            
-        prev_time = 0
-        
-        while flag:
-            resize_frame = cv2.resize(frame, (fix_w, fix_h), interpolation=cv2.INTER_AREA)
-            resize_frame = Detector.findPose(resize_frame)        
-            frame, landmark_info = Detector.getPoints(resize_frame)
-
-            
-            cur_time = time.time()
-            fps = 1/(cur_time-prev_time)
-            prev_time = cur_time
-            cv2.putText(resize_frame, str(int(fps)),(70,50),cv2.FONT_HERSHEY_PLAIN, 3 ,(255,0,0),3)
-
-            avg_visbility = sum(landmark_info[:,2]) / len(landmark_info)
-            visibility_list.append(avg_visbility)
-            cv2.putText(resize_frame, str(float(avg_visbility)),(70,130),cv2.FONT_HERSHEY_PLAIN, 3 ,(255,0,0),3)  
-
-            writer.write(cv2.resize(resize_frame, (fix_w, fix_h)))
-            cv2.waitKey(1)
             flag, frame = cap.read()
+            fps = int(cap.get(cv2.CAP_PROP_FPS))
+            fix_w, fix_h = resize_wh(frame)
+            fourcc = cv2.VideoWriter_fourcc(*'MP4V')
+            writer = cv2.VideoWriter(out_path + video_list[idx], fourcc, fps, (fix_w, fix_h), True) 
+                
+            prev_time = 0
+            
+            while flag:
+                resize_frame = cv2.resize(frame, (fix_w, fix_h), interpolation=cv2.INTER_AREA)
+                Detector.findPose(resize_frame)        
+                Detector.getPoints(resize_frame, is_draw=True)
+                lm, _, avg_visbility = Detector.getUpperWorldPoints()
+
+                cur_time = time.time()
+                fps = 1/(cur_time-prev_time)
+                prev_time = cur_time
+                cv2.putText(resize_frame, str(int(fps)),(30,50),cv2.FONT_HERSHEY_PLAIN, 3 ,(255,0,0),3)
+
+                visibility_list.append(avg_visbility)
+                cv2.putText(resize_frame, str(float(avg_visbility)),(30,130),cv2.FONT_HERSHEY_PLAIN, 3 ,(255,0,0),3)  
+
+                writer.write(cv2.resize(resize_frame, (fix_w, fix_h)))
+                flag, frame = cap.read()
+        except:
+            print(video_path + '/' + video_list[idx] +' <- 오류가 있는 파일입니다')
+            continue
+        
         print(video_list[idx]+":"+str(sum(visibility_list) / len(visibility_list)))
         cap.release()
         writer.release()
