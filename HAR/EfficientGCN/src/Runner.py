@@ -181,12 +181,12 @@ class Runner(Initializer):
             print("\ntop1=",action_names[reco_top1])
             print("(",out.max(1)[0],")\n")
             
-            reco_top5 = torch.topk(out,5)[1]
+            reco_top3 = torch.topk(out,3)[1]
             
             top1_name = action_names[reco_top1]
-            top5_names = [action_names[idx] for idx in reco_top5[0]]
+            top3_names = [action_names[idx] for idx in reco_top3[0]]
 
-            self.videoFiles.write_videos(idx, top1_name, top5_names)
+            self.videoFiles.write_videos(idx, top1_name, top3_names)
         
 
         
