@@ -4,6 +4,8 @@ import time
 import numpy as np
 import os
 from tqdm import tqdm
+import ray
+@ray.remote
 class PoseDetector():
     def __init__(self, mode=False, complexity=1, smooth=True, 
                  segmentation=False, detectConf=0.5, trackConf=0.5) -> None:
@@ -175,7 +177,7 @@ def resize_wh(frame, short_side=256):
 
 def make_skeleton_videos(args):
     video_path = args.video
-    video_list = [file for file in os.listdir(video_path) if file.endswith(".mp4")]
+    video_list = [file for file in os.listdir(video_path) if file.endswith(".mp4") or file.endswith(".avi")]
     out_path = video_path + '/skelton_added_videos/'
     if not os.path.exists(out_path):
         os.mkdir(out_path)

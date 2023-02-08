@@ -60,7 +60,7 @@ class Processor(Initializer):
         self.model.eval()
         start_eval_time = time()
         with torch.no_grad():
-            num_top1, num_top5 = 0, 0
+            num_top1, num_top2 = 0, 0
             num_sample, eval_loss = 0, []
             cm = np.zeros((self.num_class, self.num_class))
             eval_iter = self.eval_loader if self.no_progress_bar else tqdm(self.eval_loader, dynamic_ncols=True)
@@ -81,8 +81,8 @@ class Processor(Initializer):
                 num_sample += x.size(0)
                 reco_top1 = out.max(1)[1]
                 num_top1 += reco_top1.eq(y).sum().item()
-                reco_top5 = torch.topk(out,5)[1]
-                num_top5 += sum([y[n] in reco_top5[n,:] for n in range(x.size(0))])
+                reco_top2 = torch.topk(out,2)[1]
+                num_top2 += sum([y[n] in reco_top2[n,:] for n in range(x.size(0))])
 
                 # Calculating Confusion Matrix
                 for i in range(x.size(0)):
@@ -94,12 +94,12 @@ class Processor(Initializer):
 
         # Showing Evaluating Results
         acc_top1 = num_top1 / num_sample
-        acc_top5 = num_top5 / num_sample
+        acc_top2 = num_top2 / num_sample
         eval_loss = sum(eval_loss) / len(eval_loss)
         eval_time = time() - start_eval_time
         eval_speed = len(self.eval_loader) * self.eval_batch_size / eval_time / len(self.args.gpus)
-        logging.info('Top-1 accuracy: {:d}/{:d}({:.2%}), Top-5 accuracy: {:d}/{:d}({:.2%}), Mean loss:{:.4f}'.format(
-            num_top1, num_sample, acc_top1, num_top5, num_sample, acc_top5, eval_loss
+        logging.info('Top-1 accuracy: {:d}/{:d}({:.2%}), Top-2 accuracy: {:d}/{:d}({:.2%}), Mean loss:{:.4f}'.format(
+            num_top1, num_sample, acc_top1, num_top2, num_sample, acc_top2, eval_loss
         ))
         logging.info('Evaluating time: {:.2f}s, Speed: {:.2f} sequnces/(second*GPU)'.format(
             eval_time, eval_speed
@@ -110,7 +110,7 @@ class Processor(Initializer):
             self.scalar_writer.add_scalar('eval_loss', eval_loss, self.global_step)
 
         torch.cuda.empty_cache()
-        return acc_top1, acc_top5, cm
+        return acc_top1, acc_top2, cm
 
     def start(self):
         start_time = time()
