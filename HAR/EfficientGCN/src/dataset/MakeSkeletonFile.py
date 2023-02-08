@@ -4,6 +4,7 @@ import argparse
 import os
 import cv2
 from tqdm import tqdm
+import logging
 
 FONTFACE = cv2.FONT_HERSHEY_DUPLEX
 FONTSCALE = 0.75
@@ -17,7 +18,7 @@ def parse_args():
     parser.add_argument('--fps', type=int, default=10, help='frame extraction count per sec')
     parser.add_argument('--short-side', type=int, default=480, help='specify the short-side length of the image')
     parser.add_argument('--complexity', type=int, default=1, choices=range(0, 3), help='Complexity of the pose landmark model: 0, 1 or 2. Landmark accuracy as well as inference latency generally go up with the model complexity. Default to 1.')
-    parser.add_argument('--label', type=int, default=121)
+    parser.add_argument('--label', type=int, default=0)
     args = parser.parse_args()
     return args
 
@@ -25,41 +26,45 @@ class FileController:
     def __init__(self, args) -> None:
         self.video_path = args.video
         self.fps = args.fps
-        self.video_list = [file for file in os.listdir(self.video_path) if file.endswith(".mp4")]
-        self.num_video = len(self.video_list)
+        self.video_list = [file for file in os.listdir(self.video_path) if file.endswith(".mp4") or file.endswith(".avi")]
         self.short_side = args.short_side
         self.file_cnt = 0
         self.file_names = self.get_file_names()
-        
+        self.num_video = len(self.video_list)
         self.prev_frame_name = ""
         self.out_file = ""
-        self.out_P_cnt = 0
+        self.out_P_cnt = 1
         self.label = args.label
         self.out_P_dict = dict()
+        
+        if self.label == 2:
+            self.flip = False
+        else:
+            self.flip = True
+            
         
     def __iter__(self):
         return self
     
     def __next__(self) -> dict:
         if self.file_cnt >= self.num_video:
-            raise StopIteration
-        frames, frame_name = self.read_video(self.file_cnt)
-        
-        if frame_name not in self.out_P_dict or self.out_P_dict[frame_name]['S'] >= 32:
-            self.out_P_dict[frame_name] = dict(S=18,P=self.out_P_cnt)
-            self.out_P_cnt += 1
-        else:
-            self.out_P_dict[frame_name]['S'] += 1
-        
+            if not self.flip:
+                raise StopIteration
+            else:
+                self.flip=False
+                self.file_cnt = 0
 
-        
+        frames, frame_name = self.read_video(self.file_cnt, self.flip)
         self.file_cnt += 1
         return frames, frame_name
 
     def __len__(self) -> int:
-        return self.num_video
+        if self.label == 2:
+            return self.num_video
+        else:
+            return self.num_video*2
     
-    def read_video(self, idx: int) -> tuple([list, str]):
+    def read_video(self, idx: int, is_flip: bool=False) -> tuple([list, str]):
         video = self.video_list[idx]
         frame_name = self.file_names[idx]
 
@@ -68,7 +73,7 @@ class FileController:
         if self.fps>=video_fps:
             self.fps = video_fps
         skip_frame = float(video_fps / self.fps)
-        skip_cnt = 0
+        skip_cnt = 1
         frame_cnt = 0
         frames = []
         # frame_paths = []
@@ -83,12 +88,15 @@ class FileController:
                 skip_cnt += 1
                 continue
             else:
-                skip_cnt = 0
+                skip_cnt = 1
 
             if new_h is None:
                 new_w, new_h = self.resize_wh(frame, self.short_side)
+                
             
             frame =  cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_AREA)
+            if is_flip:
+                cv2.flip(frame, 1)
             frames.append(frame)
             
             # frame_path = frame_tmp.format(frame_cnt + 1)
@@ -119,7 +127,7 @@ class FileController:
 
     
     def write_skeleton_file(self, skeleton_info: list, frame_name: str) -> None:
-        frame_dir = './out'
+        frame_dir = './data/mediapipe'
         os.makedirs(frame_dir, exist_ok=True)
         file_dir = frame_dir + "/" + self.get_out_file_name(frame_name)
         
@@ -131,10 +139,15 @@ class FileController:
         
     
     def get_out_file_name(self, frame_name) -> str:
+        if frame_name not in self.out_P_dict or self.out_P_dict[frame_name]['S'] >= 32:
+            self.out_P_dict[frame_name] = dict(S=1,P=self.out_P_cnt)
+            self.out_P_cnt += 1
+        else:
+            self.out_P_dict[frame_name]['S'] += 1
         file_name = "S{0:03d}C001P{1:03d}R001A{2:03d}.skeleton".format(self.out_P_dict[frame_name]['S'], self.out_P_dict[frame_name]['P'], self.label)
         return file_name
 
-    def write_videos(self, idx: int, top1, top5) -> None:
+    def write_videos(self, idx: int, top1, top3) -> None:
         video = self.video_list[idx]
 
         frame_path = 'video_out/' + video
@@ -151,14 +164,14 @@ class FileController:
 
             cv2.putText(frame, top1, (10, 30), FONTFACE, FONTSCALE,
                     FONTCOLOR, THICKNESS, LINETYPE)  
-            cv2.putText(frame, top5[1], (10, 60), FONTFACE, FONTSCALE,
+            cv2.putText(frame, top3[1], (10, 60), FONTFACE, FONTSCALE,
                     FONTCOLOR, THICKNESS, LINETYPE)   
-            cv2.putText(frame, top5[2], (10, 90), FONTFACE, FONTSCALE,
+            cv2.putText(frame, top3[2], (10, 90), FONTFACE, FONTSCALE,
                     FONTCOLOR, THICKNESS, LINETYPE)   
-            cv2.putText(frame, top5[3], (10, 120), FONTFACE, FONTSCALE,
-                    FONTCOLOR, THICKNESS, LINETYPE)   
-            cv2.putText(frame, top5[4], (10, 150), FONTFACE, FONTSCALE,
-                    FONTCOLOR, THICKNESS, LINETYPE)   
+            # cv2.putText(frame, top5[3], (10, 120), FONTFACE, FONTSCALE,
+            #         FONTCOLOR, THICKNESS, LINETYPE)   
+            # cv2.putText(frame, top5[4], (10, 150), FONTFACE, FONTSCALE,
+            #         FONTCOLOR, THICKNESS, LINETYPE)   
             writer.write(frame) 
             flag, frame = vid.read()
 
@@ -168,100 +181,60 @@ class FileController:
 
 class SkeletonMaker:
     def __init__(self, args) -> None:
-        self.model = pm(complexity=args.complexity)
-        self.bodyID = 100000000000000000
+        self.model = pm(complexity=args.complexity,detectConf=0.75, trackConf=0.75)
         
-    def gen_skeleton_file(self, frames) -> list:
+        if args.label == 0: #painting
+            self.bodyID = 0
+        elif args.label == 1: #interview
+            self.bodyID = 50000
+        else:
+            self.bodyID = 100000 #pause
+        self.non_person = []
+        for _ in range(25):
+                self.non_person.append([0.0,0.0,0.0])
+        
+        
+    def gen_skeleton_file(self, frames) -> tuple([list, bool]):
             file = []
             
-            skeleton_list, score_list = self.skeleton_inference(frames)
-        
+            skeleton_list, score_list, avg_score_list = self.skeleton_inference(frames)
+            if sum(avg_score_list)/len(avg_score_list) < 0.75:
+                return [], False
+            
             frame_num = len(skeleton_list)
             file.append(self.translate_str(frame_num))
-            self.bodyID += 1
-
-            non_person =[]
-            for _ in range(25):
-                non_person.append([0.0,0.0,0.0])
+            self.bodyID += 1           
             
             for idx, skeleton in enumerate(skeleton_list):
                 # print("skeleton = ",skeleton)
-                if skeleton!=non_person: # sekeleton data가 있을때,
+                if skeleton!=self.non_person: # sekeleton data가 있을때,
                     body_cnt = 1
                     file.append(self.translate_str(body_cnt))
                     
-                    
-                    body_info = self.get_body_info(score_list[idx])
-                    file.append(self.translate_str(body_info))
+                    file.append(self.translate_str(self.bodyID))
                     
                     joint_num = 25
                     file.append(self.translate_str(joint_num))
                     
                     for i in range(joint_num):
-                        if len(score_list[idx]) == 0 or score_list[idx][i] <= 0.6:
-                            other_joint = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0]  #차후 수정 가능
-                        else:
-                            other_joint = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 2]
-                        file.append(self.translate_str(skeleton[i] + other_joint))
+                        file.append(self.translate_str(skeleton[i]))
                 else: # skeleton data가 모두 0으로 채워져있을때
                     file.append('0\n') 
             
-            return file
-                    
+            return file, True                    
                 
         
     def skeleton_inference(self, frames: list) -> tuple([list, list]):
         ret = []
         score_list = []
+        avg_score_list = []
         for frame in frames:
-            frame = self.model.findPose(frame)
-            point_dict, score = self.model.get3DPoints()
-            ret.append(point_dict)
-            score_list.append(score)
-        return ret, score_list
-    
-
-    def get_body_info(self, score_list: list) -> list:
-        body_info = []
-        
-        body_info.append(self.bodyID)
-        
-        #해당 함수 이후 차후 수정 가능
-        #clipedEdges
-        body_info.append(0)
-        
-        #handLeftConfidence
-        if len(score_list) == 0 or score_list[7] <= 0.6:
-            body_info.append(0)
-            body_info.append(0)
-        else:
-            body_info.append(1)
-            body_info.append(1)
-        
-        #handRightConfidence
-        if len(score_list) == 0 or score_list[1] <= 0.6:
-            body_info.append(0)
-            body_info.append(0)
-        else:
-            body_info.append(1)
-            body_info.append(1)
-        
-        #isResticted
-        body_info.append(0)
-        
-        #lean_info
-        body_info.append(0)
-        body_info.append(0)
-        
-        #trackingState
-        score_avg = np.mean(score_list)
-        if score_avg > 0.3:
-            body_info.append(2)
-        else:
-            body_info.append(0)
-        
-        
-        return body_info 
+            self.model.findPose(frame)
+            landmarks, visibility_list, avg_visibility = self.model.getUpperWorldPoints()
+            ret.append(landmarks)
+            score_list.append(visibility_list)
+            avg_score_list.append(avg_visibility)
+        return ret, score_list, avg_score_list     
         
         
     def translate_str(self, data):
@@ -275,16 +248,28 @@ class SkeletonMaker:
             return ret + "\n"
         else:
             raise
-            
+
+def make_skeleton_data_files(args):
+    logger = logging.getLogger()
+    logger.setLevel(logging.DEBUG)
+    formatter = logging.Formatter(u'%(asctime)s [%(levelname)8s] %(message)s')
     
-def main():
-    args = parse_args()
+    
+    file_handler = logging.FileHandler('./output.log')
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
+    
+    
+    
+    
     videoFiles = FileController(args)
     skeletonMaker = SkeletonMaker(args)
+    try:  
+        for frames, frame_name in tqdm(videoFiles):
+            file_contents, is_valid = skeletonMaker.gen_skeleton_file(frames)
+            if is_valid:       
+                videoFiles.write_skeleton_file(file_contents, frame_name)
+                logger.debug("{} 처리 완료".format(videoFiles.video_list[videoFiles.file_cnt-1]))
+    except:
+        logger.error("{} 처리중 오류 발생".format(videoFiles.video_list[videoFiles.file_cnt])) 
     
-    for frames, frame_name in tqdm(videoFiles):
-        file_contents = skeletonMaker.gen_skeleton_file(frames)        
-        videoFiles.write_skeleton_file(file_contents, frame_name)
-        
-if __name__ == "__main__":
-    main()

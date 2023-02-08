@@ -12,12 +12,44 @@ Other Python libraries are presented in the **'scripts/requirements.txt'**, whic
 pip install -r scripts/requirements.txt
 ```
 
-### 2.2 Experimental Dataset
+### 1.2 Experimental Dataset
 
 Our models are experimented on the **NTU RGB+D 60 & 120** datasets, which can be downloaded from 
 [here](http://rose1.ntu.edu.sg/datasets/actionrecognition.asp).
 
 There are 302 samples of **NTU RGB+D 60** and 532 samples of **NTU RGB+D 120** need to be ignored, which are shown in the **'src/preprocess/ignore.txt'**.
+
+#### dataset configuration
+
+* painting 500 * 2 ( augmentation )
+* Staring 500 * 2 ( augmentation )
+* nothing 900 ( from ntu dataset )
+
+#### classes for nothing
+* selection criteria : Actions that can come out except painting and interview(staring) in a drawing environment
+(그림그리는 환경에서 painting, interview(staring)를 제외하고 나올 수 있는 행동)
+
+1.  1~60 classes 중 
+* A1: drink water ; 물 마시기
+* A4: brush hair ; 빗으로 머리 빗기
+* A5: drop ; 물건 떨어뜨림
+* A6: pick up ; 떨어진 물건 줍기
+* A10: clapping ; 손벽 치기
+* A12: writing ; 쓰기 ??
+* A18: put on glasses ; 안경 쓰기
+* A19: take off glasses ; 안경 벗기
+* A28: phone call ; 전화하기
+* A29: play with phone/tablet ; 핸드폰하기
+* A33: check time (from watch) ; 손목시계보기
+* A49: fan self ; 손부채질하기
+
+2. 61~120
+* A68: flick hair ; 머리 정리(만지기)
+* A78: open bottle ; 뚜껑 열기
+* A91: open a box ; 박스 열기
+* A96: cross arms ; 팔짱 끼기
+* A103: yawn ; 하품하기
+* A104: stretch oneself ; 스트레칭
 
 
 ## 2 Running
