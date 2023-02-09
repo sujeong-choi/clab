@@ -84,7 +84,6 @@ class Processor(Initializer):
                 reco_top2 = torch.topk(out,2)[1]
                 num_top2 += sum([y[n] in reco_top2[n,:] for n in range(x.size(0))])
 
-
                 # Calculating Confusion Matrix
                 for i in range(x.size(0)):
                     cm[y[i], reco_top1[i]] += 1
