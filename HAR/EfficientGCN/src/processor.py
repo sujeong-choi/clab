@@ -100,6 +100,7 @@ class Processor(Initializer):
         eval_speed = len(self.eval_loader) * self.eval_batch_size / eval_time / len(self.args.gpus)
         logging.info('Top-1 accuracy: {:d}/{:d}({:.2%}), Top-2 accuracy: {:d}/{:d}({:.2%}), Mean loss:{:.4f}'.format(
             num_top1, num_sample, acc_top1, num_top2, num_sample, acc_top2, eval_loss
+
         ))
         logging.info('Evaluating time: {:.2f}s, Speed: {:.2f} sequnces/(second*GPU)'.format(
             eval_time, eval_speed
@@ -111,6 +112,7 @@ class Processor(Initializer):
 
         torch.cuda.empty_cache()
         return acc_top1, acc_top2, cm
+
 
     def start(self):
         start_time = time()
