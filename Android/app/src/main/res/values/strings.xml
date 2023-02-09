@@ -2,12 +2,12 @@
     <string name="app_name">Android</string>
     <string name="action_settings">Settings</string>
     <!-- Strings used for fragments for navigation -->
-    <string name="first_fragment_label">First Fragment</string>
-    <string name="second_fragment_label">Second Fragment</string>
+    <string name="video_fragment_label">Video Fragment</string>
+    <string name="timelapse_fragment_label">Timelapse Fragment</string>
     <string name="next">Next</string>
     <string name="previous">Previous</string>
     <string name="upload">Upload</string>
     <string name="live">Live</string>
-    <string name="pause_play">Pause/Play</string>
+    <string name="timelapse">Timelapse</string>
     <string name="hello_second_fragment">Fragment to display list of timelapses</string>
 </resources>

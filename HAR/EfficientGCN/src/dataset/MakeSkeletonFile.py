@@ -9,7 +9,7 @@ import multiprocessing as mp
 from joblib import Parallel, delayed
 import ray
 
-CPU_NUM = 12
+CPU_NUM = 30
 
 ray.init(num_cpus=CPU_NUM, dashboard_port=8888)
 FONTFACE = cv2.FONT_HERSHEY_DUPLEX
@@ -22,45 +22,39 @@ LINETYPE = 1
 class FileController:
     def __init__(self, args) -> None:
         self.video_path = args.video
+        self.label = args.label
         self.fps = args.fps
         self.video_list = [file for file in os.listdir(self.video_path) if file.endswith(".mp4") or file.endswith(".avi")]
         self.short_side = args.short_side
         self.file_cnt = 0
         self.file_names = self.get_file_names()
         self.num_video = len(self.video_list)
-        self.prev_frame_name = ""
-        self.out_file = ""
-        self.out_P_cnt = 1
-        self.label = args.label
-        self.out_P_dict = dict()
+        self.out_P_dict = {'S': 1,'P': 0}
         self.state = args.generate_skeleton_file
 
         
-        if self.label == 2:
-            self.flip = False
-        else:
+        if self.label <= 2:
             self.flip = True
+        else:
+            self.flip = False
             
         
     def __iter__(self):
         return self
     
     def __next__(self) -> dict:
-        if self.file_cnt >= self.num_video:
+        if self.file_cnt >= self.num_video-1:
             if not self.state or not self.flip:
                 raise StopIteration
             else:
                 self.flip=False
                 self.file_cnt = 0
 
-        frames, frame_name = self.read_video(self.file_cnt, self.flip)
+        frames, file_name = self.read_video(self.file_cnt, self.flip)
         self.file_cnt += 1
-        return frames, frame_name
+        return frames, file_name
 
     def __len__(self) -> int:
-        if self.state and not self.label >= 2:
-            return self.num_video*2
-        else:
             return self.num_video
     
     def read_video(self, idx: int, is_flip: bool=False) -> tuple([list, str]):
@@ -103,8 +97,9 @@ class FileController:
 
             # cv2.imwrite(frame_path, frame)
             frame_cnt += 1
-            
-        return frames, frame_name
+        
+        file_name = self.get_out_file_name(frame_name)
+        return frames, file_name
     
     def resize_wh(self, frame, short_side: int) -> tuple([int, int]):
         h, w = frame.shape[:2]  
@@ -121,41 +116,26 @@ class FileController:
 
 
     def get_file_names(self) -> list:
-        names = [x.split('_')[0] for x in self.video_list]
+        if self.label <= 2:
+            names = [x.split('.')[0] for x in self.video_list]
+        else:
+            names = [x.split('_')[0] for x in self.video_list]
         return names
 
     
-    def write_skeleton_file(self, skeleton_info: list, frame_name: str) -> None:
-        frame_dir = './data/mediapipe_test'
-        os.makedirs(frame_dir, exist_ok=True)
-        file_dir = frame_dir + "/" + self.get_out_file_name(frame_name)
-        
-        f = open(file_dir, 'w')
-        for idx in range(len(skeleton_info)):
-            f.write(skeleton_info[idx])
-        f.close()
-        
-        
     
     def get_out_file_name(self, frame_name) -> str:
-        if self.label >= 3:
-            return frame_name + ".skeleton"
-        elif self.label == 2:
-            if "ntu" not in self.out_P_dict or self.out_P_dict["ntu"]['S'] >= 32:
-                self.out_P_dict["ntu"] = dict(S=1,P=self.out_P_cnt)
-                self.out_P_cnt += 1
-            else:
-                self.out_P_dict["ntu"]['S'] += 1
-            file_name = "S{0:03d}C001P{1:03d}R001A{2:03d}.skeleton".format(self.out_P_dict["ntu"]['S'], self.out_P_dict["ntu"]['P'], self.label)
+        if self.label >= 4:
+            file_name = frame_name + ".skeleton"
         else:
-            if frame_name not in self.out_P_dict or self.out_P_dict[frame_name]['S'] >= 32:
-                self.out_P_dict[frame_name] = dict(S=1,P=self.out_P_cnt)
-                self.out_P_cnt += 1
+            if self.out_P_dict['P'] >= 40:
+                self.out_P_dict["P"] = 1
+                self.out_P_dict["S"] += 1
             else:
-                self.out_P_dict[frame_name]['S'] += 1
-            file_name = "S{0:03d}C001P{1:03d}R001A{2:03d}.skeleton".format(self.out_P_dict[frame_name]['S'], self.out_P_dict[frame_name]['P'], self.label)
+                self.out_P_dict['P'] += 1
+            file_name = "S{0:03d}C001P{1:03d}R001A{2:03d}.skeleton".format(self.out_P_dict['S'], self.out_P_dict['P'], self.label)
         return file_name
-
+        
     def write_videos(self, idx: int, top1, top3, res_str) -> None:
         video = self.video_list[idx]
 
@@ -197,9 +177,9 @@ class SkeletonMaker:
     def __init__(self, args) -> None:
         self.model = pm.remote(complexity=args.complexity,detectConf=0.75, trackConf=0.75)
         
-        if args.label == 0: #painting
+        if args.label == 1: #painting
             self.bodyID = 0
-        elif args.label == 1: #interview
+        elif args.label == 2: #interview
             self.bodyID = 50000
         else:
             self.bodyID = 100000 #pause
@@ -322,9 +302,23 @@ def make_skeleton_data_files(args):
     
     video_cnt = 0
     video_num = ray.get(videoFiles.get_len.remote())
-    while video_cnt < video_num :
+    if args.label <= 2:
+        flip = True
+    else:
+        flip = False
+        
+    while True:
+        if video_cnt >= video_num:
+            if flip:
+                flip = False
+                video_cnt = 0
+            else:
+                break
+        
         for idx in range(CPU_NUM):
-            funcs.append(multi_gen.remote(video_cnt+idx, skeletonMaker_list[idx], videoFiles_ray))
+            if video_cnt+idx >= video_num:
+                break
+            funcs.append(multi_gen.remote(video_cnt+idx, skeletonMaker_list[idx], videoFiles, flip))
         video_cnt += CPU_NUM
             
     ray.get(funcs)
@@ -339,15 +333,24 @@ def make_skeleton_data_files(args):
     # except:
     #     logger.error("{} 처리중 오류 발생".format(videoFiles.video_list[videoFiles.file_cnt])) 
     
-
+@ray.remote     
+def write_skeleton_file(skeleton_info: list, file_name: str) -> None:
+    frame_dir = './data/mediapipe'
+    os.makedirs(frame_dir, exist_ok=True)
+    file_dir = frame_dir + "/" + file_name
+    
+    f = open(file_dir, 'w')
+    for idx in range(len(skeleton_info)):
+        f.write(skeleton_info[idx])
+    f.close()
      
  
 @ray.remote  
-def multi_gen(idx, skeletonMaker, videoFiles): 
-    frames, frame_name = ray.get(videoFiles.read_video.remote(idx, False))
+def multi_gen(idx, skeletonMaker, videoFiles, flip): 
+    frames, file_name = ray.get(videoFiles.read_video.remote(idx, flip))
     file_contents, is_valid = ray.get(skeletonMaker.gen_skeleton_file.remote(frames))
     if is_valid:       
-        videoFiles.write_skeleton_file.remote(file_contents, frame_name)
-        print(str(idx)+"th file extract finished"+frame_name)
+        write_skeleton_file.remote(file_contents, file_name)
+        print(str(idx)+"th file extract finished: "+file_name)
     # del file_contents, skeletonMaker
     # gc.collect()

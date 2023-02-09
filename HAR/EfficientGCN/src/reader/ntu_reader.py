@@ -7,7 +7,7 @@ from .transformer import pre_normalization
 GAP = 2
 
 class NTU_Reader():
-    def __init__(self, args, root_folder, transform, ntu60_path, ntu120_path, mediapipe_path, **kwargs):
+    def __init__(self, args, root_folder, transform,  mediapipe_path, **kwargs): # ntu60_path, ntu120_path, 제거 2/9
         self.max_channel = 3
         self.max_frame = 300
         self.max_joint = 25
@@ -47,8 +47,9 @@ class NTU_Reader():
         training_samples['ntu-xset38']=training_samples['ntu-xset120'] # training : count = 20,357 / testing : count = 17,401
 
         training_samples['mediapipe-xset'] = training_samples['ntu-xset120'] # 2/6
-        
-        print(f"self.dataset = {self.dataset}")
+        training_samples['mediapipe-ntu-xsub'] = training_samples['ntu-xsub'] # 2/9
+
+        # print(f"self.dataset = {self.dataset}")
         self.training_sample = training_samples[self.dataset]
 
         # Get ignore samples
@@ -140,7 +141,7 @@ class NTU_Reader():
             # Distinguish train or eval sample
             if self.dataset == 'ntu-xview':
                 is_training_sample = (camera_id in self.training_sample)
-            elif self.dataset == 'ntu-xsub' or self.dataset == 'ntu-xsub120':
+            elif self.dataset == 'ntu-xsub' or self.dataset == 'ntu-xsub120' or self.dataset == "mediapipe-ntu-xsub":
                 is_training_sample = (subject_id in self.training_sample)
             elif self.dataset == 'ntu-xset120' or self.dataset=='ntu-xset38' or self.dataset=='mediapipe-xset':
                 is_training_sample = (setup_id in self.training_sample)

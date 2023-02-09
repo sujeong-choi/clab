@@ -16,8 +16,8 @@ visualization_frames: []
 dataset: mediapipe-xset
 dataset_args:
   mediapipe:
-    train_batch_size: 8 #16
-    eval_batch_size: 8 #16
+    train_batch_size: 16
+    eval_batch_size: 16
     num_frame: 144
     inputs: JVB
     transform: False
@@ -62,9 +62,9 @@ optimizer_args:
 lr_scheduler: cosine
 scheduler_args:
   step:
-    max_epoch: 30 #70
+    max_epoch: 70
     warm_up: 10
     step_lr: [20,50]
   cosine:
-    max_epoch: 30 #70
+    max_epoch: 70
     warm_up: 10

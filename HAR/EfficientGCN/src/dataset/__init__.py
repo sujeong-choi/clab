@@ -14,6 +14,7 @@ __data_args = {
     'ntu-xsub38': {'class': 38, 'shape': [3, 6, 300, 25, 2], 'feeder': NTU_Feeder},
     'ntu-xset38': {'class': 38, 'shape': [3, 6, 300, 25, 2], 'feeder': NTU_Feeder},
     'mediapipe-xset':{'class':3, 'shape':[3, 6, 300, 25, 2], 'feeder': NTU_Feeder}, # 2/6
+    'mediapipe-ntu-xsub':{'class': 60, 'shape': [3, 6, 300, 25, 2], 'feeder': NTU_Feeder}, # 2/9
 }
 
 def create(dataset, root_folder, transform, num_frame, inputs, **kwargs):

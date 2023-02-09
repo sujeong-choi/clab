@@ -84,6 +84,7 @@ class Processor(Initializer):
                 reco_top2 = torch.topk(out,2)[1]
                 num_top2 += sum([y[n] in reco_top2[n,:] for n in range(x.size(0))])
 
+
                 # Calculating Confusion Matrix
                 for i in range(x.size(0)):
                     cm[y[i], reco_top1[i]] += 1
@@ -100,6 +101,7 @@ class Processor(Initializer):
         eval_speed = len(self.eval_loader) * self.eval_batch_size / eval_time / len(self.args.gpus)
         logging.info('Top-1 accuracy: {:d}/{:d}({:.2%}), Top-2 accuracy: {:d}/{:d}({:.2%}), Mean loss:{:.4f}'.format(
             num_top1, num_sample, acc_top1, num_top2, num_sample, acc_top2, eval_loss
+
         ))
         logging.info('Evaluating time: {:.2f}s, Speed: {:.2f} sequnces/(second*GPU)'.format(
             eval_time, eval_speed

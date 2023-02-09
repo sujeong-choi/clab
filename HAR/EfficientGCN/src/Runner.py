@@ -7,38 +7,38 @@ from .initializer import Initializer
 from . import dataset
 from .dataset import Graph
 
-# action_names = [
-#             'drink water 1', 'eat meal/snack 2', 'brushing teeth 3', 'brushing hair 4', 'drop 5', 'pickup 6',
-#             'throw 7', 'sitting down 8', 'standing up 9', 'clapping 10', 'reading 11', 'writing 12',
-#             'tear up paper 13', 'wear jacket 14', 'take off jacket 15', 'wear a shoe 16', 'take off a shoe 17',
-#             'wear on glasses 18','take off glasses 19', 'put on a hat/cap 20', 'take off a hat/cap 21', 'cheer up 22',
-#             'hand waving 23', 'kicking something 24', 'put/take out sth 25', 'hopping 26', 'jump up 27',
-#             'make a phone call 28', 'playing with a phone 29', 'typing on a keyboard 30',
-#             'pointing to sth with finger 31', 'taking a selfie 32', 'check time (from watch) 33',
-#             'rub two hands together 34', 'nod head/bow 35', 'shake head 36', 'wipe face 37', 'salute 38',
-#             'put the palms together 39', 'cross hands in front 40', 'sneeze/cough 41', 'staggering 42', 'falling 43',
-#             'touch head 44', 'touch chest 45', 'touch back 46', 'touch neck 47', 'nausea or vomiting condition 48',
-#             'use a fan 49', 'punching 50', 'kicking other person 51', 'pushing other person 52',
-#             'pat on back of other person 53', 'point finger at the other person 54', 'hugging other person 55',
-#             'giving sth to other person 56', 'touch other person pocket 57', 'handshaking 58',
-#             'walking towards each other 59', 'walking apart from each other 60' , 'put on headphone 61',
-#             'take off headphone 62', 'shoot at the basket 63', 'bounce ball 64', 'tennis bat swing 65',
-#             'juggling table tennis balls 66', 'hush (quite) 67', 'flick hair 68', 'thumb up 69',
-#             'thumb down 70', 'make ok sign 71', 'make victory sign 72', 'staple book 73' , 'counting money 74',
-#             'cutting nails 75', 'cutting paper (using scissors) 76', 'snapping fingers 77', 'open bottle 78',
-#             'sniff (smell) 79', 'squat down 80', 'toss a coin 81', 'fold paper 82', 'ball up paper 83',
-#             'play magic cube 84', 'apply cream on face 85', 'apply cream on hand back 86', 'put on bag 87',
-#             'take off bag 88', 'put something into a bag 89', 'take something out of a bag 90', 'open a box 91',
-#             'move heavy objects 92', 'shake fist 93', 'throw up cap/hat 94', 'hands up (both hands) 95',
-#             'cross arms 96', 'arm circles 97', 'arm swings 98', 'running on the spot 99', 'butt kicks (kick backward) 100',
-#             'cross toe touch 101', 'side kick 102', 'yawn 103', 'stretch oneself 104', 'blow nose 105',
-#             'hit other person with something 106', 'wield knife towards other person 107', 
-#             'knock over other person (hit with body) 108', 'grab other person’s stuff 109',
-#             'shoot at other person with a gun 110', 'step on foot 111', 'high-five 112',
-#             'cheers and drink 113', 'carry something with other person 114', 'take a photo of other person 115',
-#             'follow other person 116', 'whisper in other person’s ear 117', 'exchange things with other person 118',
-#             'support somebody with hand 119', 'finger-guessing game (playing rock-paper-scissors) 120', 'Painting! 121'
-#         ]
+action_names = [
+            'drink water 1', 'eat meal/snack 2', 'brushing teeth 3', 'brushing hair 4', 'drop 5', 'pickup 6',
+            'throw 7', 'sitting down 8', 'standing up 9', 'clapping 10', 'reading 11', 'writing 12',
+            'tear up paper 13', 'wear jacket 14', 'take off jacket 15', 'wear a shoe 16', 'take off a shoe 17',
+            'wear on glasses 18','take off glasses 19', 'put on a hat/cap 20', 'take off a hat/cap 21', 'cheer up 22',
+            'hand waving 23', 'kicking something 24', 'put/take out sth 25', 'hopping 26', 'jump up 27',
+            'make a phone call 28', 'playing with a phone 29', 'typing on a keyboard 30',
+            'pointing to sth with finger 31', 'taking a selfie 32', 'check time (from watch) 33',
+            'rub two hands together 34', 'nod head/bow 35', 'shake head 36', 'wipe face 37', 'salute 38',
+            'put the palms together 39', 'cross hands in front 40', 'sneeze/cough 41', 'staggering 42', 'falling 43',
+            'touch head 44', 'touch chest 45', 'touch back 46', 'touch neck 47', 'nausea or vomiting condition 48',
+            'use a fan 49', 'punching 50', 'kicking other person 51', 'pushing other person 52',
+            'pat on back of other person 53', 'point finger at the other person 54', 'hugging other person 55',
+            'giving sth to other person 56', 'touch other person pocket 57', 'handshaking 58',
+            'walking towards each other 59', 'walking apart from each other 60' , 'put on headphone 61',
+            'take off headphone 62', 'shoot at the basket 63', 'bounce ball 64', 'tennis bat swing 65',
+            'juggling table tennis balls 66', 'hush (quite) 67', 'flick hair 68', 'thumb up 69',
+            'thumb down 70', 'make ok sign 71', 'make victory sign 72', 'staple book 73' , 'counting money 74',
+            'cutting nails 75', 'cutting paper (using scissors) 76', 'snapping fingers 77', 'open bottle 78',
+            'sniff (smell) 79', 'squat down 80', 'toss a coin 81', 'fold paper 82', 'ball up paper 83',
+            'play magic cube 84', 'apply cream on face 85', 'apply cream on hand back 86', 'put on bag 87',
+            'take off bag 88', 'put something into a bag 89', 'take something out of a bag 90', 'open a box 91',
+            'move heavy objects 92', 'shake fist 93', 'throw up cap/hat 94', 'hands up (both hands) 95',
+            'cross arms 96', 'arm circles 97', 'arm swings 98', 'running on the spot 99', 'butt kicks (kick backward) 100',
+            'cross toe touch 101', 'side kick 102', 'yawn 103', 'stretch oneself 104', 'blow nose 105',
+            'hit other person with something 106', 'wield knife towards other person 107', 
+            'knock over other person (hit with body) 108', 'grab other person’s stuff 109',
+            'shoot at other person with a gun 110', 'step on foot 111', 'high-five 112',
+            'cheers and drink 113', 'carry something with other person 114', 'take a photo of other person 115',
+            'follow other person 116', 'whisper in other person’s ear 117', 'exchange things with other person 118',
+            'support somebody with hand 119', 'finger-guessing game (playing rock-paper-scissors) 120', 'Painting! 121'
+        ]
 
 # action_names = [
 #             'writing 12-6', 
@@ -50,7 +50,7 @@ from .dataset import Graph
 #             'cross arms 96-32', 'arm circles 97-33', 'arm swings 98-34','cross toe touch 101-35', 'stretch oneself 104-36',
 #             'high-five 112-37', 'Painting 121-38'
 #         ]
-action_names = ['painting','Staring','other thing'] # 2/6
+# action_names = ['painting','Staring','other thing'] # 2/6
 
 
 class Runner(Initializer):
@@ -96,7 +96,7 @@ class Runner(Initializer):
         T = self.args.dataset_args[list(self.args.dataset_args.keys())[0]]['num_frame']
         inputs = self.args.dataset_args[list(self.args.dataset_args.keys())[0]]['inputs']
         self.data_shape = [3, 6, T, 25, 2]
-        self.num_class = 3 #38 #121 # 2/6
+        self.num_class = 60 #38 #121 # 2/6
         
         for idx, (frames, _) in tqdm(enumerate(self.videoFiles)):
             skeleton, _, _ = self.skeletonMaker.skeleton_inference(frames)
