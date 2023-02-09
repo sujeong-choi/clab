@@ -63,7 +63,7 @@ class NTU_Reader():
         # Get skeleton file list
         self.file_list = []
         check = dict()
-        for folder in [mediapipe_path, ntu60_path, ntu120_path]:
+        for folder in [mediapipe_path]:
             for filename in os.listdir(folder):
                 if '38' in self.dataset:
                     action_loc = filename.find('A')
@@ -129,10 +129,11 @@ class NTU_Reader():
             camera_loc = filename.find('C')
             subject_loc = filename.find('P')
             action_loc = filename.find('A')
+            
             setup_id = int(filename[(setup_loc+1):(setup_loc+4)])
             camera_id = int(filename[(camera_loc+1):(camera_loc+4)])
             subject_id = int(filename[(subject_loc+1):(subject_loc+4)])
-            action_class = self.O2C[int(filename[(action_loc+1):(action_loc+4)])]
+            action_class = int(filename[(action_loc+1):(action_loc+4)])
 
 
 

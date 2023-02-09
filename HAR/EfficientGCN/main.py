@@ -99,8 +99,7 @@ def init_parser():
     parser.add_argument('--short-side', type=int, default=480, help='specify the short-side length of the image')
     parser.add_argument('--complexity', type=int, default=1, choices=range(0, 3), help='Complexity of the pose landmark model: 0, 1 or 2. Landmark accuracy as well as inference latency generally go up with the model complexity. Default to 1.')
     parser.add_argument('--visualize_skeleton', '-vsk', default=False, action='store_true', help='Make skeleton added videos')
-
-    parser.add_argument('--label', type=int, default=0, choices=range(0, 3), help='data label. 0:painting, 1: interview, 2:pause')
+    parser.add_argument('--label', type=int, default=0, choices=range(0, 4), help='data label. 0:painting, 1: interview, 2:pause
     parser.add_argument('--generate_skeleton_file', '-gs', default=False, action='store_true', help='Make skeleton files from videos')
     parser.add_argument('--finetuning', '-ft',default=False, action='store_true', help='Fine tuning')
 
@@ -130,8 +129,8 @@ if __name__ == '__main__':
 
 # generate dataset : python main.py -c 2038 -gd
 # training :  python main.py -c 2038 -g 0 --label 38# training :  python main.py -c 2038 -g 1 --label 38
-# testing :  python main.py -c 2038 -run -vp videos/test -g 1 --fps 30
-# generate skeleton files: python main.py -c 2038 -gs -vp videos/painting4sec --lebel 0     ## 0:painting, 1: interview, 2:pause ##
+# testing :  python main.py -c 2038 -run -vp videos/test -g 1 --fps 15
+# generate skeleton files: python main.py  -c 5116 -gs -vp videos/painting_dataset --label 0     ## 0:painting, 1: interview, 2:pause ##
 # generate skeleton added video files: python main.py -c 2038 -vsk -vp videos/painting4sec
 # finetuning : python main.py -c 2012 -ft -g 0
 
