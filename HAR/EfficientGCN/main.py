@@ -99,7 +99,7 @@ def init_parser():
     parser.add_argument('--short-side', type=int, default=480, help='specify the short-side length of the image')
     parser.add_argument('--complexity', type=int, default=1, choices=range(0, 3), help='Complexity of the pose landmark model: 0, 1 or 2. Landmark accuracy as well as inference latency generally go up with the model complexity. Default to 1.')
     parser.add_argument('--visualize_skeleton', '-vsk', default=False, action='store_true', help='Make skeleton added videos')
-    parser.add_argument('--label', type=int, default=0, choices=range(0, 4), help='data label. 0:painting, 1: interview, 2:pause')
+    parser.add_argument('--label', type=int, default=1, choices=range(1, 5), help='data label. 1:painting, 2: interview, 3:pause, 4:ntu60')
     parser.add_argument('--generate_skeleton_file', '-gs', default=False, action='store_true', help='Make skeleton files from videos')
     parser.add_argument('--finetuning', '-ft',default=False, action='store_true', help='Fine tuning')
 

@@ -18,6 +18,8 @@ class FineTuning(Processor):
         self.init_optimizer()
         self.model.module.classifier[2] = nn.Conv3d(272, num_class, kernel_size=(1, 1, 1), stride=(1, 1, 1))
         self.num_class = num_class
+        self.model.to(self.device)
+        print(f"self.num_class = {self.num_class}")
         optimizer = U.import_class('torch.optim.{}'.format(self.args.optimizer))
         optimizer_args = self.args.optimizer_args[self.args.optimizer]
         self.optimizer = optimizer(self.model.parameters(), **optimizer_args)

@@ -69,9 +69,9 @@ optimizer_args:
 lr_scheduler: cosine
 scheduler_args:
   step:
-    max_epoch: 70
+    max_epoch: 20
     warm_up: 10
     step_lr: [20,50]
   cosine:
-    max_epoch: 70
+    max_epoch: 20
     warm_up: 10
