@@ -1,25 +1,27 @@
 complexity: 1
-config: '2012'
-dataset: ntu-xset120
+config: '5116'
+dataset: mediapipe-xset
 dataset_args:
-  ntu:
-    eval_batch_size: 1
+  mediapipe:
+    eval_batch_size: 4
     inputs: JVB
+    mediapipe_path: ./data/mediapipe
     ntu120_path: ./data/ntu120
     ntu60_path: ./data/ntu60
-    num_frame: 288
+    num_frame: 144
     root_folder: ./data/npy_dataset
-    train_batch_size: 16
+    train_batch_size: 4
     transform: false
 debug: false
 delay_hours: 0
 evaluate: true
 extract: false
-fps: 10
+fps: 15
 generate_data: false
+generate_skeleton_file: false
 gpus:
 - 0
-label: 121
+label: 0
 lr_scheduler: cosine
 model_args:
   act_type: swish
@@ -86,4 +88,5 @@ visualization_class: 0
 visualization_frames: []
 visualization_sample: 0
 visualize: false
+visualize_skeleton: false
 work_dir: ./workdir

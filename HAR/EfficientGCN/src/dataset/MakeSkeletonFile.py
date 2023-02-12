@@ -5,23 +5,20 @@ import os
 import cv2
 from tqdm import tqdm
 import logging
+import multiprocessing as mp
+from joblib import Parallel, delayed
+import ray
 
+CPU_NUM = 12
+
+ray.init(num_cpus=CPU_NUM, dashboard_port=8888)
 FONTFACE = cv2.FONT_HERSHEY_DUPLEX
 FONTSCALE = 0.75
 FONTCOLOR = (0, 0, 255)  # BGR
 THICKNESS = 1
 LINETYPE = 1
 
-def parse_args():
-    parser = argparse.ArgumentParser(description='Convert RGB video to skeleton pkl file')
-    parser.add_argument('video', help='video file/url')
-    parser.add_argument('--fps', type=int, default=10, help='frame extraction count per sec')
-    parser.add_argument('--short-side', type=int, default=480, help='specify the short-side length of the image')
-    parser.add_argument('--complexity', type=int, default=1, choices=range(0, 3), help='Complexity of the pose landmark model: 0, 1 or 2. Landmark accuracy as well as inference latency generally go up with the model complexity. Default to 1.')
-    parser.add_argument('--label', type=int, default=0)
-    args = parser.parse_args()
-    return args
-
+@ray.remote
 class FileController:
     def __init__(self, args) -> None:
         self.video_path = args.video
@@ -36,6 +33,8 @@ class FileController:
         self.out_P_cnt = 1
         self.label = args.label
         self.out_P_dict = dict()
+        self.state = args.generate_skeleton_file
+
         
         if self.label == 2:
             self.flip = False
@@ -48,7 +47,7 @@ class FileController:
     
     def __next__(self) -> dict:
         if self.file_cnt >= self.num_video:
-            if not self.flip:
+            if not self.state or not self.flip:
                 raise StopIteration
             else:
                 self.flip=False
@@ -59,10 +58,10 @@ class FileController:
         return frames, frame_name
 
     def __len__(self) -> int:
-        if self.label == 2:
-            return self.num_video
-        else:
+        if self.state and not self.label >= 2:
             return self.num_video*2
+        else:
+            return self.num_video
     
     def read_video(self, idx: int, is_flip: bool=False) -> tuple([list, str]):
         video = self.video_list[idx]
@@ -127,7 +126,7 @@ class FileController:
 
     
     def write_skeleton_file(self, skeleton_info: list, frame_name: str) -> None:
-        frame_dir = './data/mediapipe'
+        frame_dir = './data/mediapipe_test'
         os.makedirs(frame_dir, exist_ok=True)
         file_dir = frame_dir + "/" + self.get_out_file_name(frame_name)
         
@@ -139,15 +138,25 @@ class FileController:
         
     
     def get_out_file_name(self, frame_name) -> str:
-        if frame_name not in self.out_P_dict or self.out_P_dict[frame_name]['S'] >= 32:
-            self.out_P_dict[frame_name] = dict(S=1,P=self.out_P_cnt)
-            self.out_P_cnt += 1
+        if self.label >= 3:
+            return frame_name + ".skeleton"
+        elif self.label == 2:
+            if "ntu" not in self.out_P_dict or self.out_P_dict["ntu"]['S'] >= 32:
+                self.out_P_dict["ntu"] = dict(S=1,P=self.out_P_cnt)
+                self.out_P_cnt += 1
+            else:
+                self.out_P_dict["ntu"]['S'] += 1
+            file_name = "S{0:03d}C001P{1:03d}R001A{2:03d}.skeleton".format(self.out_P_dict["ntu"]['S'], self.out_P_dict["ntu"]['P'], self.label)
         else:
-            self.out_P_dict[frame_name]['S'] += 1
-        file_name = "S{0:03d}C001P{1:03d}R001A{2:03d}.skeleton".format(self.out_P_dict[frame_name]['S'], self.out_P_dict[frame_name]['P'], self.label)
+            if frame_name not in self.out_P_dict or self.out_P_dict[frame_name]['S'] >= 32:
+                self.out_P_dict[frame_name] = dict(S=1,P=self.out_P_cnt)
+                self.out_P_cnt += 1
+            else:
+                self.out_P_dict[frame_name]['S'] += 1
+            file_name = "S{0:03d}C001P{1:03d}R001A{2:03d}.skeleton".format(self.out_P_dict[frame_name]['S'], self.out_P_dict[frame_name]['P'], self.label)
         return file_name
 
-    def write_videos(self, idx: int, top1, top3) -> None:
+    def write_videos(self, idx: int, top1, top3, res_str) -> None:
         video = self.video_list[idx]
 
         frame_path = 'video_out/' + video
@@ -157,17 +166,19 @@ class FileController:
         flag, frame = vid.read()
         h, w = frame.shape[:2] 
         fourcc = cv2.VideoWriter_fourcc(*'MP4V')
-        writer = cv2.VideoWriter("videos/out/"+video, fourcc, video_fps, (w, h), True) 
+        writer = cv2.VideoWriter("./videos/out/"+video, fourcc, video_fps, (w, h), True) 
         while True:
             if not flag:
                 break
 
             cv2.putText(frame, top1, (10, 30), FONTFACE, FONTSCALE,
                     FONTCOLOR, THICKNESS, LINETYPE)  
-            cv2.putText(frame, top3[1], (10, 60), FONTFACE, FONTSCALE,
+            cv2.putText(frame, res_str, (10, 60), FONTFACE, FONTSCALE,
                     FONTCOLOR, THICKNESS, LINETYPE)   
-            cv2.putText(frame, top3[2], (10, 90), FONTFACE, FONTSCALE,
-                    FONTCOLOR, THICKNESS, LINETYPE)   
+            # cv2.putText(frame, top3[2], (10, 90), FONTFACE, FONTSCALE,
+            #         FONTCOLOR, THICKNESS, LINETYPE)   
+            # cv2.putText(frame, top3[2], (10, 90), FONTFACE, FONTSCALE,
+            #         FONTCOLOR, THICKNESS, LINETYPE)   
             # cv2.putText(frame, top5[3], (10, 120), FONTFACE, FONTSCALE,
             #         FONTCOLOR, THICKNESS, LINETYPE)   
             # cv2.putText(frame, top5[4], (10, 150), FONTFACE, FONTSCALE,
@@ -177,11 +188,14 @@ class FileController:
 
         vid.release()
         writer.release()
+        
+    def get_len(self) -> int:
+        return self.num_video
 
-
+@ray.remote
 class SkeletonMaker:
     def __init__(self, args) -> None:
-        self.model = pm(complexity=args.complexity,detectConf=0.75, trackConf=0.75)
+        self.model = pm.remote(complexity=args.complexity,detectConf=0.75, trackConf=0.75)
         
         if args.label == 0: #painting
             self.bodyID = 0
@@ -229,8 +243,8 @@ class SkeletonMaker:
         score_list = []
         avg_score_list = []
         for frame in frames:
-            self.model.findPose(frame)
-            landmarks, visibility_list, avg_visibility = self.model.getUpperWorldPoints()
+            self.model.findPose.remote(frame)
+            landmarks, visibility_list, avg_visibility = ray.get(self.model.getUpperWorldPoints.remote())
             ret.append(landmarks)
             score_list.append(visibility_list)
             avg_score_list.append(avg_visibility)
@@ -262,14 +276,78 @@ def make_skeleton_data_files(args):
     
     
     
-    videoFiles = FileController(args)
-    skeletonMaker = SkeletonMaker(args)
-    try:  
-        for frames, frame_name in tqdm(videoFiles):
-            file_contents, is_valid = skeletonMaker.gen_skeleton_file(frames)
-            if is_valid:       
-                videoFiles.write_skeleton_file(file_contents, frame_name)
-                logger.debug("{} 처리 완료".format(videoFiles.video_list[videoFiles.file_cnt-1]))
-    except:
-        logger.error("{} 처리중 오류 발생".format(videoFiles.video_list[videoFiles.file_cnt])) 
     
+
+    procs = []
+        
+    # for i in tqdm(range(len(videoFiles))):
+    #     proc = Process(target=multiprocess, args=(args, videoFiles, i))
+    #     procs.append(proc)
+    #     proc.start()
+    
+    # for proc in procs:
+    #     proc.join()
+    
+    info_list = []
+    # pool = Pool(processes=4)
+    # for i in tqdm(range(len(videoFiles))):
+    #     info_list.append((skeletonMaker, videoFiles, i))
+        
+    # with tqdm(total=len(videoFiles)) as pbar:
+    #     for _ in tqdm(pool.map(multiprocess, info_list)):
+    #         pbar.update()
+    
+    
+    
+    # pool.map(multiprocess, info_list)
+    # pool.close()
+    # pool.join()
+    videoFiles = FileController.remote(args)
+    
+
+
+    
+    # print(cpu_cnt)
+    # with Parallel(n_jobs=cpu_cnt, prefer="processes") as parallel:
+    #     parallel(delayed(multi_gen)(idx, skeletonMaker=skeletonMaker, videoFiles=videoFiles) for idx in tqdm(range(len(videoFiles))))
+    
+    skeletonMaker_list = []
+    for _ in range(CPU_NUM):
+        skeletonMaker = SkeletonMaker.remote(args)
+        skeletonMaker_list.append(skeletonMaker)
+    
+    videoFiles_ray = ray.put(videoFiles)
+    
+    funcs = []
+    
+    video_cnt = 0
+    video_num = ray.get(videoFiles.get_len.remote())
+    while video_cnt < video_num :
+        for idx in range(CPU_NUM):
+            funcs.append(multi_gen.remote(video_cnt+idx, skeletonMaker_list[idx], videoFiles_ray))
+        video_cnt += CPU_NUM
+            
+    ray.get(funcs)
+    
+    ray.shutdown()
+    
+    # try:  
+   
+        
+        
+            # logger.debug("{} 처리 완료".format(videoFiles.video_list[videoFiles.file_cnt-1]))
+    # except:
+    #     logger.error("{} 처리중 오류 발생".format(videoFiles.video_list[videoFiles.file_cnt])) 
+    
+
+     
+ 
+@ray.remote  
+def multi_gen(idx, skeletonMaker, videoFiles): 
+    frames, frame_name = ray.get(videoFiles.read_video.remote(idx, False))
+    file_contents, is_valid = ray.get(skeletonMaker.gen_skeleton_file.remote(frames))
+    if is_valid:       
+        videoFiles.write_skeleton_file.remote(file_contents, frame_name)
+        print(str(idx)+"th file extract finished"+frame_name)
+    # del file_contents, skeletonMaker
+    # gc.collect()

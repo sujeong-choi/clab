@@ -40,17 +40,17 @@ from .dataset import Graph
 #             'support somebody with hand 119', 'finger-guessing game (playing rock-paper-scissors) 120', 'Painting! 121'
 #         ]
 
-action_names = [
-            'writing 12-6', 
-            'hand waving 23-9','pointing to sth with finger 31-10','rub two hands together 34-11',
-            'nod head/bow 35-12', 'shake head 36-13','put the palms together 39-14', 'cross hands in front 40-15', 'touch head 44-16',
-            'touch chest 45-17', 'touch back 46-18', 'touch neck 47-19', 'hush (quite) 67-20','thumb up 69-21', 
-            'thumb down 70-22', 'make ok sign 71-23', 'make victory sign 72-24', 'staple book 73-25','cutting paper (using scissors) 76-26', 
-            'snapping fingers 77-27', 'squat down 80-28', 'fold paper 82-29', 'ball up paper 83-30', 'hands up (both hands) 95-31',
-            'cross arms 96-32', 'arm circles 97-33', 'arm swings 98-34','cross toe touch 101-35', 'stretch oneself 104-36',
-            'high-five 112-37', 'Painting 121-38'
-        ]
-# action_names = ['painting','Staring','other thing'] # 2/6
+# action_names = [
+#             'writing 12-6', 
+#             'hand waving 23-9','pointing to sth with finger 31-10','rub two hands together 34-11',
+#             'nod head/bow 35-12', 'shake head 36-13','put the palms together 39-14', 'cross hands in front 40-15', 'touch head 44-16',
+#             'touch chest 45-17', 'touch back 46-18', 'touch neck 47-19', 'hush (quite) 67-20','thumb up 69-21', 
+#             'thumb down 70-22', 'make ok sign 71-23', 'make victory sign 72-24', 'staple book 73-25','cutting paper (using scissors) 76-26', 
+#             'snapping fingers 77-27', 'squat down 80-28', 'fold paper 82-29', 'ball up paper 83-30', 'hands up (both hands) 95-31',
+#             'cross arms 96-32', 'arm circles 97-33', 'arm swings 98-34','cross toe touch 101-35', 'stretch oneself 104-36',
+#             'high-five 112-37', 'Painting 121-38'
+#         ]
+action_names = ['painting','Staring','other thing'] # 2/6
 
 
 class Runner(Initializer):
@@ -93,9 +93,8 @@ class Runner(Initializer):
         self.A = graph.A
         self.parts = graph.parts
         self.conn = graph.connect_joint
-
-        T = self.args.dataset_args['ntu']['num_frame']
-        inputs = self.args.dataset_args['ntu']['inputs']
+        T = self.args.dataset_args[list(self.args.dataset_args.keys())[0]]['num_frame']
+        inputs = self.args.dataset_args[list(self.args.dataset_args.keys())[0]]['inputs']
         self.data_shape = [3, 6, T, 25, 2]
         self.num_class = 3 #38 #121 # 2/6
         
@@ -180,14 +179,23 @@ class Runner(Initializer):
             reco_top1 = out.max(1)[1]
             print("\ntop1=",action_names[reco_top1])
             print("(",out.max(1)[0],")\n")
+            res_str = self.print_softmax(out)
             
             reco_top3 = torch.topk(out,3)[1]
             
             top1_name = action_names[reco_top1]
             top3_names = [action_names[idx] for idx in reco_top3[0]]
 
-            self.videoFiles.write_videos(idx, top1_name, top3_names)
-        
+            self.videoFiles.write_videos(idx, top1_name, top3_names, res_str)
+            
+
+    def print_softmax(self, out: list):
+        exp_out = np.exp(out[0].cpu().detach().numpy())
+        sum_exp_put = np.sum(exp_out)
+        y = exp_out/ sum_exp_put * 100
+        res_str = "Prob: painting:{0:.2f}%, interview:{1:.2f}%, pause:{2:.2f}%".format(y[0], y[1], y[2])
+        print(res_str)
+        return res_str
 
         
         
