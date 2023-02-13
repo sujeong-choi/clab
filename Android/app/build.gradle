@@ -8,7 +8,7 @@ android {
 
     defaultConfig {
         applicationId "com.example.android"
-        minSdk 21
+        minSdk 28
         targetSdk 33
         versionCode 1
         versionName "1.0"
@@ -58,4 +58,5 @@ dependencies {
 
     implementation 'org.pytorch:pytorch_android_lite:1.13.0'
     implementation 'org.pytorch:pytorch_android_torchvision_lite:1.13.0'
+    implementation 'com.microsoft.onnxruntime:onnxruntime-android:latest.release'
 }
