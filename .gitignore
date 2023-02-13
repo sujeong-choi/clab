@@ -25,3 +25,5 @@ assets
 
 # Android
 .gradle
+**/raw
+**/assets
