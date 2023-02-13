@@ -10,12 +10,20 @@ from .initializer import Initializer
 action_names = ['painting','Staring','other thing']
 
 class FineTuning(Processor):
+    def set_parameter_requires_grad(self, feature_extracting):
+        if feature_extracting:
+            for param in self.model.parameters():
+                param.requires_grad = False
+
+
+
 
     def start(self, num_class):
         start_time = time()
 
+        self.init_environment()
         self.init_model()
-        self.init_optimizer()
+        # self.set_parameter_requires_grad(True)
         self.model.module.classifier[2] = nn.Conv3d(272, num_class, kernel_size=(1, 1, 1), stride=(1, 1, 1))
         self.num_class = num_class
         self.model.to(self.device)

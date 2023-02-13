@@ -18,7 +18,7 @@ class Processor(Initializer):
 
             # Using GPU
             x = x.float().to(self.device)
-            y = y.long().to(self.device) -1
+            y = y.long().to(self.device)
 
             # Calculating Output
             out, _ = self.model(x)
@@ -68,7 +68,7 @@ class Processor(Initializer):
 
                 # Using GPU
                 x = x.float().to(self.device)
-                y = y.long().to(self.device) -1
+                y = y.long().to(self.device)
 
                 # Calculating Output
                 out, _ = self.model(x)
@@ -197,7 +197,6 @@ class Processor(Initializer):
 
         # Loading Data
         x, y, names = iter(self.eval_loader).next()
-        y -= 1
         location = self.location_loader.load(names) if self.location_loader else []
 
         # Calculating Output

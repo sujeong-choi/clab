@@ -29,11 +29,11 @@ class FileController:
         self.file_cnt = 0
         self.file_names = self.get_file_names()
         self.num_video = len(self.video_list)
-        self.out_P_dict = {'S': 1,'P': 0}
+        self.out_P_dict = {'S': 0,'P': 1}
         self.state = args.generate_skeleton_file
 
         
-        if self.label <= 2:
+        if self.label >= 121:
             self.flip = True
         else:
             self.flip = False
@@ -116,7 +116,7 @@ class FileController:
 
 
     def get_file_names(self) -> list:
-        if self.label <= 2:
+        if self.label >= 121: # 2/11
             names = [x.split('.')[0] for x in self.video_list]
         else:
             names = [x.split('_')[0] for x in self.video_list]
@@ -125,14 +125,14 @@ class FileController:
     
     
     def get_out_file_name(self, frame_name) -> str:
-        if self.label >= 4:
+        if self.label <= 120: # 2/11
             file_name = frame_name + ".skeleton"
         else:
-            if self.out_P_dict['P'] >= 40:
-                self.out_P_dict["P"] = 1
-                self.out_P_dict["S"] += 1
+            if self.out_P_dict['S'] >= 32:
+                self.out_P_dict["S"] = 1
+                self.out_P_dict["P"] += 1
             else:
-                self.out_P_dict['P'] += 1
+                self.out_P_dict['S'] += 1
             file_name = "S{0:03d}C001P{1:03d}R001A{2:03d}.skeleton".format(self.out_P_dict['S'], self.out_P_dict['P'], self.label)
         return file_name
         
@@ -177,9 +177,9 @@ class SkeletonMaker:
     def __init__(self, args) -> None:
         self.model = pm.remote(complexity=args.complexity,detectConf=0.75, trackConf=0.75)
         
-        if args.label == 1: #painting
+        if args.label == 121: #painting
             self.bodyID = 0
-        elif args.label == 2: #interview
+        elif args.label == 122: #interview
             self.bodyID = 50000
         else:
             self.bodyID = 100000 #pause
@@ -253,43 +253,7 @@ def make_skeleton_data_files(args):
     file_handler.setFormatter(formatter)
     logger.addHandler(file_handler)
     
-    
-    
-    
-    
-
-    procs = []
-        
-    # for i in tqdm(range(len(videoFiles))):
-    #     proc = Process(target=multiprocess, args=(args, videoFiles, i))
-    #     procs.append(proc)
-    #     proc.start()
-    
-    # for proc in procs:
-    #     proc.join()
-    
-    info_list = []
-    # pool = Pool(processes=4)
-    # for i in tqdm(range(len(videoFiles))):
-    #     info_list.append((skeletonMaker, videoFiles, i))
-        
-    # with tqdm(total=len(videoFiles)) as pbar:
-    #     for _ in tqdm(pool.map(multiprocess, info_list)):
-    #         pbar.update()
-    
-    
-    
-    # pool.map(multiprocess, info_list)
-    # pool.close()
-    # pool.join()
     videoFiles = FileController.remote(args)
-    
-
-
-    
-    # print(cpu_cnt)
-    # with Parallel(n_jobs=cpu_cnt, prefer="processes") as parallel:
-    #     parallel(delayed(multi_gen)(idx, skeletonMaker=skeletonMaker, videoFiles=videoFiles) for idx in tqdm(range(len(videoFiles))))
     
     skeletonMaker_list = []
     for _ in range(CPU_NUM):
@@ -302,7 +266,7 @@ def make_skeleton_data_files(args):
     
     video_cnt = 0
     video_num = ray.get(videoFiles.get_len.remote())
-    if args.label <= 2:
+    if args.label > 120:
         flip = True
     else:
         flip = False
@@ -322,16 +286,7 @@ def make_skeleton_data_files(args):
         video_cnt += CPU_NUM
             
     ray.get(funcs)
-    
     ray.shutdown()
-    
-    # try:  
-   
-        
-        
-            # logger.debug("{} 처리 완료".format(videoFiles.video_list[videoFiles.file_cnt-1]))
-    # except:
-    #     logger.error("{} 처리중 오류 발생".format(videoFiles.video_list[videoFiles.file_cnt])) 
     
 @ray.remote     
 def write_skeleton_file(skeleton_info: list, file_name: str) -> None:
