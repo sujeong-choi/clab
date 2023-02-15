@@ -1,14 +1,34 @@
+import onnx
+import tensorflow as tf
+from onnx_tf.backend import prepare
+
 import os, yaml, argparse
 from time import sleep
 
-from src.generator import Generator
-from src.processor import Processor
-from src.visualizer import Visualizer
-from src.Runner import Runner
-from src.finetuning import FineTuning
-from src.torch2onnx import Torch2Onnx
-from src.dataset.PoseModule import make_skeleton_videos
-from src.dataset.MakeSkeletonFile import make_skeleton_data_files
+class Onnx2Tflite():
+    def start(self,args):
+        self.args = args
+
+        onnx_model = onnx.load(self.args.onnx_fname)
+        # onnx.checker.check_model(onnx_model)
+        # convert onnx to tflite
+        onnx.helper.printable_graph(onnx_model.graph)
+
+        tf_model_path = "data/tf_model"
+        tf_rep = prepare(onnx_model)
+        tf_rep.export_graph(tf_model_path)
+        print("success to save pb file\n")
+
+        converter = tf.lite.TFLiteConverter.from_saved_model(tf_model_path)
+        converter.target_spec.supported_ops = [
+            tf.lite.OpsSet.TFLITE_BUILTINS, # enable TensorFlow Lite ops.
+            tf.lite.OpsSet.SELECT_TF_OPS # enable TensorFlow ops.
+        ]
+        tflite_model = converter.convert()
+        tflite_model_path = "data/tflite-model"
+        with open(tflite_model_path, 'wb') as f:
+            f.write(tflite_model)
+        print("success to make and save tflite file\n")
 
 
 def main():
@@ -21,37 +41,15 @@ def main():
     sleep(args.delay_hours * 3600)
 
     # Processing
-    if args.generate_data:
-        g = Generator(args)
-        g.start()
-
-    elif args.extract or args.visualize:
-        if args.extract:
-            p = Processor(args)
-            p.extract()
-        if args.visualize:
-            v = Visualizer(args)
-            v.start()
-
-    elif args.runner:
-        r = Runner(args)
-        r.run()
-        
-    elif args.visualize_skeleton:
-        make_skeleton_videos(args)
-        
-    elif args.generate_skeleton_file:
-        make_skeleton_data_files(args)
-
-    elif args.finetuning:
-        f = FineTuning(args)
-        f.start(3)
-    elif args.convertonnx:
-            t2o = Torch2Onnx(args)
-            t2o.start()
+    if  args.convertonnx:
+        if os.path.exists(args.onnx_fname):
+            print(f"{args.onnx_fname} 파일이 존재합니다.\n")
+            o2t = Onnx2Tflite()
+            o2t.start(args)
+        else:
+            print(f"{args.onnx_fname} 파일이 없습니다. \n")
     else:
-        p = Processor(args)
-        p.start()
+        print(f"convertonnx 가 false입니다.  \n")
 
 
 def init_parser():
@@ -114,8 +112,8 @@ def init_parser():
 
 
 def update_parameters(parser, args):
-    if os.path.exists('./configs/{}.yaml'.format(args.config)):
-        with open('./configs/{}.yaml'.format(args.config), 'r') as f:
+    if os.path.exists('../configs/{}.yaml'.format(args.config)):
+        with open('../configs/{}.yaml'.format(args.config), 'r') as f:
             try:
                 yaml_arg = yaml.load(f, Loader=yaml.FullLoader)
             except:
@@ -134,10 +132,5 @@ if __name__ == '__main__':
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
     main()
 
-# generate dataset : python main.py -c media20 -gd
-# training :  python main.py -c 2038 -g 0 --label 38# training :  python main.py -c media20 -g 1
-# testing :  python main.py -c 2038 -run -vp videos/test -g 1 --fps 15
-# generate skeleton files: python main.py  -c 5116 -gs -vp videos/painting_dataset --label 0     ## 0:painting, 1: interview, 2:pause ##
-# generate skeleton added video files: python main.py -c 2038 -vsk -vp videos/painting4sec
-# finetuning : python main.py -c 2012 -ft -g 0
-# convert pytorch model to onnx model : python main.py -mo -ofname convert/data/out.onnx -c media20 -g 1
+
+# python onnx2tflite.py -mo -ofname data/out.onnx -c media20 -g 1
