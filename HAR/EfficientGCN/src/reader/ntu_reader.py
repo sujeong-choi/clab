@@ -7,7 +7,7 @@ from .transformer import pre_normalization
 GAP = 2
 
 class NTU_Reader():
-    def __init__(self, args, root_folder, transform, ntu60_path, ntu120_path, mediapipe_path, **kwargs):
+    def __init__(self, args, root_folder, transform,  mediapipe_path, **kwargs): # ntu60_path, ntu120_path, 제거 2/9
         self.max_channel = 3
         self.max_frame = 300
         self.max_joint = 25
@@ -17,11 +17,11 @@ class NTU_Reader():
         self.progress_bar = not args.no_progress_bar
         self.transform = transform
 
-        # self.used_actions = [5,6,7,8,9,12,13,23,25,31,34,35,36,39,40,44,45,46,47,67,69,70,71,72,73,76,77,80,82,83,95,96,97,98,101,104,112,121]
-        # self.C2O, self.O2C = dict(), dict()
-        # for i in range(len(self.used_actions)):
-        #     self.C2O[i+1]=self.used_actions[i]
-        #     self.O2C[self.used_actions[i]]=i+1
+        self.used_actions = [1,4,5,6,10,12,18,19,28,29,33,49,68,78,91,96,103,104,121,122]
+        self.C2O, self.O2C = dict(), dict()
+        for i in range(len(self.used_actions)):
+            self.C2O[i]=self.used_actions[i]
+            self.O2C[self.used_actions[i]]=i
 
         # Set paths
         ntu_ignored = '{}/ignore.txt'.format(os.path.dirname(os.path.realpath(__file__)))
@@ -34,7 +34,7 @@ class NTU_Reader():
         # Divide train and eval samples
         training_samples = dict()
         training_samples['ntu-xsub'] = [
-            1, 2, 4, 5, 8, 9, 13, 14, 15, 16, 17, 18, 19, 25, 27, 28, 31, 34, 35, 38
+            1, 2, 4, 5, 7, 8, 9, 11, 13, 14, 15, 16, 17, 18, 19, 24,25,26, 27, 28, 31,32, 34, 35, 38
         ]
         training_samples['ntu-xview'] = [2, 3]
         training_samples['ntu-xsub120'] = [
@@ -47,8 +47,10 @@ class NTU_Reader():
         training_samples['ntu-xset38']=training_samples['ntu-xset120'] # training : count = 20,357 / testing : count = 17,401
 
         training_samples['mediapipe-xset'] = training_samples['ntu-xset120'] # 2/6
-        
-        print(f"self.dataset = {self.dataset}")
+        training_samples['mediapipe-ntu-xsub'] = training_samples['ntu-xsub'] # 2/9
+        training_samples['mediapipe-ntu-xset'] = [1,2,4,6,8,10,11,12,14,16,18,20,21,22,24,26,28,30,31, 32] # 2/11
+
+        # print(f"self.dataset = {self.dataset}")
         self.training_sample = training_samples[self.dataset]
 
         # Get ignore samples
@@ -65,7 +67,7 @@ class NTU_Reader():
         check = dict()
         for folder in [mediapipe_path]:
             for filename in os.listdir(folder):
-                if '38' in self.dataset:
+                if 'mediapipe' in self.dataset:
                     action_loc = filename.find('A')
                     action_class = int(filename[(action_loc+1):(action_loc+4)])
 
@@ -133,16 +135,18 @@ class NTU_Reader():
             setup_id = int(filename[(setup_loc+1):(setup_loc+4)])
             camera_id = int(filename[(camera_loc+1):(camera_loc+4)])
             subject_id = int(filename[(subject_loc+1):(subject_loc+4)])
-            action_class = int(filename[(action_loc+1):(action_loc+4)])
+            # print(f" A = {int(filename[(action_loc+1):(action_loc+4)])}\n")
+            action_class = self.O2C[int(filename[(action_loc+1):(action_loc+4)])]
+            # action_class = int(filename[(action_loc+1):(action_loc+4)])
 
 
 
             # Distinguish train or eval sample
             if self.dataset == 'ntu-xview':
                 is_training_sample = (camera_id in self.training_sample)
-            elif self.dataset == 'ntu-xsub' or self.dataset == 'ntu-xsub120':
+            elif self.dataset == 'ntu-xsub' or self.dataset == 'ntu-xsub120' or self.dataset == "mediapipe-ntu-xsub":
                 is_training_sample = (subject_id in self.training_sample)
-            elif self.dataset == 'ntu-xset120' or self.dataset=='ntu-xset38' or self.dataset=='mediapipe-xset':
+            elif self.dataset == 'ntu-xset120' or self.dataset=='ntu-xset38' or self.dataset=='mediapipe-xset'  or self.dataset == "mediapipe-ntu-xset":
                 is_training_sample = (setup_id in self.training_sample)
             else:
                 logging.info('')

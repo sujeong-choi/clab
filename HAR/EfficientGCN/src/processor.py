@@ -113,7 +113,6 @@ class Processor(Initializer):
         torch.cuda.empty_cache()
         return acc_top1, acc_top2, cm
 
-
     def start(self):
         start_time = time()
         if self.args.evaluate:

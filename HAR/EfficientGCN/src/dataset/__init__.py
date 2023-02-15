@@ -14,6 +14,7 @@ __data_args = {
     'ntu-xsub38': {'class': 38, 'shape': [3, 6, 300, 25, 2], 'feeder': NTU_Feeder},
     'ntu-xset38': {'class': 38, 'shape': [3, 6, 300, 25, 2], 'feeder': NTU_Feeder},
     'mediapipe-xset':{'class':3, 'shape':[3, 6, 300, 25, 2], 'feeder': NTU_Feeder}, # 2/6
+    'mediapipe-ntu-xset':{'class': 20, 'shape': [3, 6, 300, 25, 2], 'feeder': NTU_Feeder}, # 2/10
 }
 
 def create(dataset, root_folder, transform, num_frame, inputs, **kwargs):
@@ -24,7 +25,7 @@ def create(dataset, root_folder, transform, num_frame, inputs, **kwargs):
         data_args['shape'][2] = num_frame
     except:
         logging.info('')
-        logging.error('Error: Do NOT exist this dataset: {}!'.foramt(dataset))
+        logging.error(f'Error: Do NOT exist this dataset: {dataset}!')
         raise ValueError()
     if transform:
         dataset_path = '{}/transformed/{}'.format(root_folder, dataset)

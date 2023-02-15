@@ -62,29 +62,29 @@ class Initializer():
             self.args.gpus = [self.args.gpus]
         if len(self.args.gpus) > 0 and torch.cuda.is_available():
             #pynvml 시작
-            # pynvml.nvmlInit()
-            # for i in self.args.gpus:
-            #     handle = pynvml.nvmlDeviceGetHandleByIndex(i)
-            #     meminfo = pynvml.nvmlDeviceGetMemoryInfo(handle)
-            #     memused = meminfo.used / 1024 / 1024
-            #     logging.info('GPU-{} used: {}MB'.format(i, memused))
-            #     if memused > 2000:
-            #         pynvml.nvmlShutdown()
-            #         logging.info('')
-            #         logging.error('GPU-{} is occupied!'.format(i))
-            #         raise ValueError()
-            # pynvml.nvmlShutdown()
-            # self.output_device = self.args.gpus[0]
-            # self.device =  torch.device('cuda:{}'.format(self.output_device))
-            # torch.cuda.set_device(self.output_device)
+            pynvml.nvmlInit()
+            for i in self.args.gpus:
+                handle = pynvml.nvmlDeviceGetHandleByIndex(i)
+                meminfo = pynvml.nvmlDeviceGetMemoryInfo(handle)
+                memused = meminfo.used / 1024 / 1024
+                logging.info('GPU-{} used: {}MB'.format(i, memused))
+                if memused > 2000:
+                    pynvml.nvmlShutdown()
+                    logging.info('')
+                    logging.error('GPU-{} is occupied!'.format(i))
+                    raise ValueError()
+            pynvml.nvmlShutdown()
+            self.output_device = self.args.gpus[0]
+            self.device =  torch.device('cuda:{}'.format(self.output_device))
+            torch.cuda.set_device(self.output_device)
             # #pynvml 끝
 
             
             # nvml 관련 오류 발생 시 위 pynvml관련 코드를 주석 처리하고
             # 아래 3줄의 코드로 대체하면 gpu:0을 할당해서 사용합니다
-            self.output_device = 'cuda:0'
-            self.device =  torch.device('cuda:0')
-            torch.cuda.set_device(self.device)
+            # self.output_device = 'cuda:0'
+            # self.device =  torch.device('cuda:0')
+            # torch.cuda.set_device(self.device)
         else:
             logging.info('Using CPU!')
             os.environ['CUDA_VISIBLE_DEVICES'] = ''
