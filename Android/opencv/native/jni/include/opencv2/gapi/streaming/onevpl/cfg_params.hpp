@@ -185,8 +185,6 @@ struct GAPI_EXPORTS CfgParam {
     const name_t& get_name() const;
     const value_t& get_value() const;
     bool is_major() const;
-    std::string to_string() const;
-
     bool operator==(const CfgParam& rhs) const;
     bool operator< (const CfgParam& rhs) const;
     bool operator!=(const CfgParam& rhs) const;

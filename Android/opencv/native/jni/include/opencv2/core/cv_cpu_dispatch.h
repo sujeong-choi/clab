@@ -79,10 +79,6 @@
 #  endif
 #  define CV_FP16 1
 #endif
-#ifdef CV_CPU_COMPILE_NEON_DOTPROD
-#  include <arm_neon.h>
-#  define CV_NEON_DOT 1
-#endif
 #ifdef CV_CPU_COMPILE_AVX2
 #  include <immintrin.h>
 #  define CV_AVX2 1
@@ -170,11 +166,6 @@
 #ifdef CV_CPU_COMPILE_MSA
 #  include "hal/msa_macros.h"
 #  define CV_MSA 1
-#endif
-
-#ifdef CV_CPU_COMPILE_LASX
-#  include <lasxintrin.h>
-#  define CV_LASX 1
 #endif
 
 #ifdef __EMSCRIPTEN__
@@ -374,8 +365,4 @@ struct VZeroUpperGuard {
 
 #ifndef CV_RVV
 #  define CV_RVV 0
-#endif
-
-#ifndef CV_LASX
-#  define CV_LASX 0
 #endif

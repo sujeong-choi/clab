@@ -540,13 +540,6 @@ public class VideoCapture {
     }
 
 
-    //
-    // C++: static bool cv::VideoCapture::waitAny(vector_VideoCapture streams, vector_int& readyIndex, int64 timeoutNs = 0)
-    //
-
-    // Unknown type 'vector_VideoCapture' (I), skipping the function
-
-
     @Override
     protected void finalize() throws Throwable {
         delete(nativeObj);
