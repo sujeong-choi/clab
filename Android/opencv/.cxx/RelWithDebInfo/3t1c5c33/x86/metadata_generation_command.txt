@@ -1,0 +1,24 @@
+                    Executable : C:\Users\Hisku\AppData\Local\Android\Sdk\cmake\3.18.1\bin\cmake.exe
+arguments : 
+-HD:\Workspace\clab\Android\opencv\libcxx_helper
+-DCMAKE_SYSTEM_NAME=Android
+-DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+-DCMAKE_SYSTEM_VERSION=21
+-DANDROID_PLATFORM=android-21
+-DANDROID_ABI=x86
+-DCMAKE_ANDROID_ARCH_ABI=x86
+-DANDROID_NDK=C:\Users\Hisku\AppData\Local\Android\Sdk\ndk\21.4.7075529
+-DCMAKE_ANDROID_NDK=C:\Users\Hisku\AppData\Local\Android\Sdk\ndk\21.4.7075529
+-DCMAKE_TOOLCHAIN_FILE=C:\Users\Hisku\AppData\Local\Android\Sdk\ndk\21.4.7075529\build\cmake\android.toolchain.cmake
+-DCMAKE_MAKE_PROGRAM=C:\Users\Hisku\AppData\Local\Android\Sdk\cmake\3.18.1\bin\ninja.exe
+-DCMAKE_LIBRARY_OUTPUT_DIRECTORY=D:\Workspace\clab\Android\opencv\build\intermediates\cxx\RelWithDebInfo\3t1c5c33\obj\x86
+-DCMAKE_RUNTIME_OUTPUT_DIRECTORY=D:\Workspace\clab\Android\opencv\build\intermediates\cxx\RelWithDebInfo\3t1c5c33\obj\x86
+-DCMAKE_BUILD_TYPE=RelWithDebInfo
+-BD:\Workspace\clab\Android\opencv\.cxx\RelWithDebInfo\3t1c5c33\x86
+-GNinja
+-DANDROID_STL=c++_shared
+jvmArgs : 
+
+
+                    Build command args: []
+                    Version: 2
