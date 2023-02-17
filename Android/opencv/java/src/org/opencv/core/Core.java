@@ -16,12 +16,12 @@ import org.opencv.utils.Converters;
 
 public class Core {
     // these constants are wrapped inside functions to prevent inlining
-    private static String getVersion() { return "4.7.0-dev"; }
-    private static String getNativeLibraryName() { return "opencv_java470"; }
+    private static String getVersion() { return "4.6.0"; }
+    private static String getNativeLibraryName() { return "opencv_java460"; }
     private static int getVersionMajorJ() { return 4; }
-    private static int getVersionMinorJ() { return 7; }
+    private static int getVersionMinorJ() { return 6; }
     private static int getVersionRevisionJ() { return 0; }
-    private static String getVersionStatusJ() { return "-dev"; }
+    private static String getVersionStatusJ() { return ""; }
 
     public static final String VERSION = getVersion();
     public static final String NATIVE_LIBRARY_NAME = getNativeLibraryName();
@@ -2331,21 +2331,6 @@ public class Core {
      */
     public static void flip(Mat src, Mat dst, int flipCode) {
         flip_0(src.nativeObj, dst.nativeObj, flipCode);
-    }
-
-
-    //
-    // C++:  void cv::flipND(Mat src, Mat& dst, int axis)
-    //
-
-    /**
-     * Flips a n-dimensional at given axis
-     * @param src input array
-     * @param dst output array that has the same shape of src
-     * @param axis axis that performs a flip on. 0 &lt;= axis &lt; src.dims.
-     */
-    public static void flipND(Mat src, Mat dst, int axis) {
-        flipND_0(src.nativeObj, dst.nativeObj, axis);
     }
 
 
@@ -5984,9 +5969,6 @@ public static MinMaxLocResult minMaxLoc(Mat src) {
 
     // C++:  void cv::flip(Mat src, Mat& dst, int flipCode)
     private static native void flip_0(long src_nativeObj, long dst_nativeObj, int flipCode);
-
-    // C++:  void cv::flipND(Mat src, Mat& dst, int axis)
-    private static native void flipND_0(long src_nativeObj, long dst_nativeObj, int axis);
 
     // C++:  void cv::rotate(Mat src, Mat& dst, int rotateCode)
     private static native void rotate_0(long src_nativeObj, long dst_nativeObj, int rotateCode);

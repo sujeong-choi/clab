@@ -41,17 +41,10 @@ public class Algorithm {
 
 
     //
-    // C++:  void cv::Algorithm::write(FileStorage fs)
+    // C++:  void cv::Algorithm::write(Ptr_FileStorage fs, String name = String())
     //
 
-    // Unknown type 'FileStorage' (I), skipping the function
-
-
-    //
-    // C++:  void cv::Algorithm::write(FileStorage fs, String name)
-    //
-
-    // Unknown type 'FileStorage' (I), skipping the function
+    // Unknown type 'Ptr_FileStorage' (I), skipping the function
 
 
     //

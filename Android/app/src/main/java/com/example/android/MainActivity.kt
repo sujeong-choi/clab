@@ -126,7 +126,7 @@ class MainActivity : AppCompatActivity(), CameraXConfig.Provider {
         println("Model output")
         println(output)
 //        return output[0][0]
-        return 0.1F1
+        return 0.1F
     }
 
     private fun resizeImage(image: Image, size: Size = Size(512.0, 512.0)): FloatBuffer {
