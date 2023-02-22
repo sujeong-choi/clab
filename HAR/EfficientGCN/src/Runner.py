@@ -7,17 +7,17 @@ from .initializer import Initializer
 from . import dataset
 from .dataset import Graph
 
-action_names = [
-            'drink water 1',  'brushing hair 4', 'drop 5', 'pickup 6',
-            'clapping 10', 'writing 12',
-            'wear on glasses 18','take off glasses 19', 'make a phone call 28', 'playing with a phone 29',
-            'check time (from watch) 33',
-            'use a fan 49', 'flick hair 68', 'open bottle 78',
-            'open a box 91',
-            'cross arms 96', 'yawn 103', 'stretch oneself 104', 'Painting 121', 'interview 122'
-        ]
+# action_names = [
+#             'drink water 1',  'brushing hair 4', 'drop 5', 'pickup 6',
+#             'clapping 10', 'writing 12',
+#             'wear on glasses 18','take off glasses 19', 'make a phone call 28', 'playing with a phone 29',
+#             'check time (from watch) 33',
+#             'use a fan 49', 'flick hair 68', 'open bottle 78',
+#             'open a box 91',
+#             'cross arms 96', 'yawn 103', 'stretch oneself 104', 'Painting 121', 'interview 122'
+#         ]
 
-
+action_names = ["others","painting","interview"]
 class Runner(Initializer):
     def __init__(self, args) -> None:
         U.set_logging(args)
@@ -30,11 +30,11 @@ class Runner(Initializer):
         self.init_device()
         self.init_data()
         self.init_model()
-        self.init_log()
+        self.init_buffer()
 
-    def init_log(self):
-        self.log_queue = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0] # 15개 label - 1분
-        self.front, self.back = 0, len(self.log_queue)-1
+    def init_buffer(self):
+        self.buffer = np.zeros((3,15)) # 15개 label - 1분
+        self.front, self.back = 0, 14
 
     def init_environment(self):
         np.random.seed(self.args.seed)
@@ -129,24 +129,30 @@ class Runner(Initializer):
             s = 0
         return s
 
-    def get_log_prob(self):
+    def get_buffer_prob(self):
         start , end = self.front, self.back
-        total_probability = 0.0
-        size = len(self.log_queue)
+        total_probability = [0.0,0.0,0.0]
+        size = 15
         alpha = 1/3 # 1: 1/4 2: 1/3
-        for i in range(size):
-            if start == end: break
-            total_probability+=self.log_queue[start]*((alpha)**(size-i))
-            start = int((start+1)%size)
+
+        for j in range(0,3):
+            start = self.front
+            for i in range(size):
+                if start == end: break
+                total_probability[j]+=self.buffer[j][start]*((alpha)**(size-i))
+                start = int((start+1)%size)
+        
         return total_probability
 
     def update_queue(self,prob):
-        size = len(self.log_queue)
-        self.log_queue[self.front]=prob
+        size = 15
+        for j in range(0,3):
+            self.buffer[j][self.front]=prob[j]
         self.front, self.back = int((self.front+1)%size) , int((self.back+1)%size)
 
 
     def run(self):
+        big3 = [0.0,0.0,0.0]
         input_data = np.zeros((self.max_channel, self.max_frame, self.max_joint, self.select_person_num), dtype=np.float32)
         zero_arr =np.zeros((1, self.max_frame, self.max_joint, self.max_channel), dtype=np.float32)
         inputs = self.args.dataset_args[list(self.args.dataset_args.keys())[0]]['inputs']
@@ -193,15 +199,20 @@ class Runner(Initializer):
             x = data.float().to(self.device)
 
             out, _ = self.model(x)
-            out_prob = self.softmax(out) # 확률로 전환
-            if out_prob[18] < 50:  out_prob[18] += self.get_log_prob() # log의 확률 값을 반영
-            if out_prob[18] > 100: out_prob[18]=100 # 100보다 커지는 경우 max값이 100으로 설정
-            self.update_queue(out_prob[18]) # log 업데이트
-            # print(f"log = {self.log_queue}")
-            reco_top1 = np.argmax(out_prob)
+            out_prob = self.softmax(out[0].cpu().detach().numpy()) # 확률로 전환
+            big3 = [sum(out_prob[:18])/18, out_prob[18], out_prob[19]]
+            # res_str = "\n\nbefore -> Prob: painting:{0:.2f}%, interview:{1:.2f}%, others:{2:.2f}%".format(big3[1],big3[2],big3[0])
+            # print(res_str)
+            big3 = [big3[j]+self.get_buffer_prob()[j] for j in range(0,3)] # 이전 확률값 반영
+            # res_str = "tmmp -> Prob: painting:{0:.2f}%, interview:{1:.2f}%, others:{2:.2f}%\n".format(big3[1],big3[2],big3[0])
+            # print(res_str)
+            big3_prob = big3/sum(big3)*100
+            self.update_queue(big3_prob) # buffer 업데이트
+            # print(f"buffer = {self.buffer}")
+            reco_top1 = np.argmax(big3_prob)
             top1_name = action_names[reco_top1]
-            res_str = self.print_softmax(out_prob)
-
+            res_str = "Prob: painting:{0:.2f}%, interview:{1:.2f}%, others:{2:.2f}%\n".format(big3_prob[1],big3_prob[2],big3_prob[0])
+            # print(res_str)
             # print(out)
             # reco_top1 = out.max(1)[1]
             # res_str = self.print_softmax(out)
@@ -210,14 +221,15 @@ class Runner(Initializer):
             self.videoFiles.write_videos(idx, top1_name, res_str)
 
     def softmax(self,out):
-        exp_out = np.exp(out[0].cpu().detach().numpy())
+        # print(f"out = {out}")
+        exp_out = np.exp(out)
         sum_exp_put = np.sum(exp_out)
         y = (exp_out/ sum_exp_put) * 100
         return y
 
-    def print_softmax(self, out: list):
-        res_str = "Prob: painting:{0:.2f}%, interview:{1:.2f}%, pause:{2:.2f}%".format(out[18], out[19], sum(out[0:17]))
-        return res_str
+    # def print_softmax(self, out: list):
+        # res_str = "Prob: painting:{0:.2f}%, interview:{1:.2f}%, others:{2:.2f}%".format(out[18], out[19], sum(out[0:17]))
+        # return res_str
 
         
         
