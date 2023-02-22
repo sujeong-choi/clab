@@ -14,11 +14,11 @@ CPU_NUM = 30
 ray.init(num_cpus=CPU_NUM, dashboard_port=8888)
 FONTFACE = cv2.FONT_HERSHEY_DUPLEX
 FONTSCALE = 0.75
-FONTCOLOR = (0, 0, 255)  # BGR
+FONTCOLOR = (0, 0, 0)  # BGR
 THICKNESS = 1
 LINETYPE = 1
 
-@ray.remote
+
 class FileController:
     def __init__(self, args) -> None:
         self.video_path = args.video
@@ -136,33 +136,25 @@ class FileController:
             file_name = "S{0:03d}C001P{1:03d}R001A{2:03d}.skeleton".format(self.out_P_dict['S'], self.out_P_dict['P'], self.label)
         return file_name
         
-    def write_videos(self, idx: int, top1, top3, res_str) -> None:
+    def write_videos(self, idx: int, top1, res_str) -> None:
         video = self.video_list[idx]
-
-        frame_path = 'video_out/' + video
+        out_foler = './videos/t1o_2/'
         vid = cv2.VideoCapture(self.video_path + '/' +video)
         video_fps = vid.get(cv2.CAP_PROP_FPS)
 
         flag, frame = vid.read()
         h, w = frame.shape[:2] 
         fourcc = cv2.VideoWriter_fourcc(*'MP4V')
-        writer = cv2.VideoWriter("./videos/out/"+video, fourcc, video_fps, (w, h), True) 
+        if not os.path.exists(out_foler) : os.mkdir(out_foler)
+        writer = cv2.VideoWriter(out_foler+video, fourcc, video_fps, (w, h), True) 
         while True:
             if not flag:
                 break
 
-            cv2.putText(frame, top1, (10, 30), FONTFACE, FONTSCALE,
+            cv2.putText(frame, top1, (10, 40), FONTFACE, FONTSCALE,
                     FONTCOLOR, THICKNESS, LINETYPE)  
-            cv2.putText(frame, res_str, (10, 60), FONTFACE, FONTSCALE,
+            cv2.putText(frame, res_str, (10, 80), FONTFACE, FONTSCALE,
                     FONTCOLOR, THICKNESS, LINETYPE)   
-            # cv2.putText(frame, top3[2], (10, 90), FONTFACE, FONTSCALE,
-            #         FONTCOLOR, THICKNESS, LINETYPE)   
-            # cv2.putText(frame, top3[2], (10, 90), FONTFACE, FONTSCALE,
-            #         FONTCOLOR, THICKNESS, LINETYPE)   
-            # cv2.putText(frame, top5[3], (10, 120), FONTFACE, FONTSCALE,
-            #         FONTCOLOR, THICKNESS, LINETYPE)   
-            # cv2.putText(frame, top5[4], (10, 150), FONTFACE, FONTSCALE,
-            #         FONTCOLOR, THICKNESS, LINETYPE)   
             writer.write(frame) 
             flag, frame = vid.read()
 
@@ -172,7 +164,6 @@ class FileController:
     def get_len(self) -> int:
         return self.num_video
 
-@ray.remote
 class SkeletonMaker:
     def __init__(self, args) -> None:
         self.model = pm.remote(complexity=args.complexity,detectConf=0.75, trackConf=0.75)
@@ -288,7 +279,7 @@ def make_skeleton_data_files(args):
     ray.get(funcs)
     ray.shutdown()
     
-@ray.remote     
+
 def write_skeleton_file(skeleton_info: list, file_name: str) -> None:
     frame_dir = './data/mediapipe'
     os.makedirs(frame_dir, exist_ok=True)
@@ -300,7 +291,7 @@ def write_skeleton_file(skeleton_info: list, file_name: str) -> None:
     f.close()
      
  
-@ray.remote  
+
 def multi_gen(idx, skeletonMaker, videoFiles, flip): 
     frames, file_name = ray.get(videoFiles.read_video.remote(idx, flip))
     file_contents, is_valid = ray.get(skeletonMaker.gen_skeleton_file.remote(frames))
