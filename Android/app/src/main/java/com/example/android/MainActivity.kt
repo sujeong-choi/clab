@@ -1,16 +1,14 @@
 package com.example.android
 
-import ai.onnxruntime.OnnxTensor
-import ai.onnxruntime.OrtEnvironment
-import ai.onnxruntime.OrtSession
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.media.Image
 import android.os.Bundle
-import android.util.Size as UtilSize
+import android.util.Log
+import android.widget.Toast
+import android.widget.VideoView
 import androidx.annotation.NonNull
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.camera2.Camera2Config
@@ -24,30 +22,38 @@ import androidx.navigation.ui.AppBarConfiguration
 import androidx.navigation.ui.setupActionBarWithNavController
 import com.example.android.databinding.ActivityMainBinding
 import com.google.common.util.concurrent.ListenableFuture
+import com.google.mlkit.vision.common.InputImage
 import org.opencv.android.OpenCVLoader
-import org.opencv.android.Utils
-import org.opencv.core.CvType
-import org.opencv.core.Mat
-import org.opencv.core.Size
-import org.opencv.imgproc.Imgproc
-import java.io.ByteArrayOutputStream
-import java.io.InputStream
-import java.nio.ByteBuffer
-import java.nio.FloatBuffer
 import java.util.concurrent.Executor
 import java.util.concurrent.Executors
+import android.util.Size as UtilSize
+
 
 class MainActivity : AppCompatActivity(), CameraXConfig.Provider {
 
     private lateinit var appBarConfiguration: AppBarConfiguration
     private lateinit var binding: ActivityMainBinding
-    private lateinit var videoView: PreviewView
+    private lateinit var previewView: PreviewView
+    private lateinit var videoView: VideoView
+
 
     lateinit var cameraProviderFuture: ListenableFuture<ProcessCameraProvider>
 
     private val REQUEST_CODE_PERMISSION = 101
-    private val REQUIRED_PERMISSIONS: Array<String> = arrayOf("android.permission.CAMERA")
+    private val REQUIRED_PERMISSIONS: Array<String> =
+        arrayOf("android.permission.CAMERA", "android.permission.READ_EXTERNAL_STORAGE")
     private val executor: Executor = Executors.newSingleThreadExecutor()
+    private lateinit var harHelper: HARHelper
+    private lateinit var pfdHelper: PFDHelper
+
+    // Mediapipe vars
+    private val TAG: String? = "MainActivity"
+    private val BINARY_GRAPH_NAME = "pose_world_gpu.binarypb"
+    private val INPUT_VIDEO_STREAM_NAME = "input_video"
+    private val OUTPUT_VIDEO_STREAM_NAME = "input_video"
+    private val OUTPUT_LANDMARKS_STREAM_NAME = "pose_world_landmarks"
+    private val NUM_HANDS = 2
+    private val FLIP_FRAMES_VERTICALLY = true
 
     override fun getCameraXConfig(): CameraXConfig {
         return Camera2Config.defaultConfig()
@@ -57,11 +63,18 @@ class MainActivity : AppCompatActivity(), CameraXConfig.Provider {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        OpenCVLoader.initDebug()
+        // Initialize OpenCV
+        if (!OpenCVLoader.initDebug()) {
+            Toast.makeText(this, "Failed to initialize OpenCV", Toast.LENGTH_LONG).show()
+        }
+
+        pfdHelper = PFDHelper(this)
+        harHelper = HARHelper()
 
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        previewView = findViewById(R.id.previewView)
         videoView = findViewById(R.id.videoView)
 
         setSupportActionBar(binding.toolbar)
@@ -70,21 +83,69 @@ class MainActivity : AppCompatActivity(), CameraXConfig.Provider {
         appBarConfiguration = AppBarConfiguration(navController.graph)
         setupActionBarWithNavController(navController, appBarConfiguration)
 
-        if(!checkPermissions()) {
+
+        if (!checkPermissions()) {
             ActivityCompat.requestPermissions(this, REQUIRED_PERMISSIONS, REQUEST_CODE_PERMISSION)
         }
 
         cameraProviderFuture = ProcessCameraProvider.getInstance(this)
-        cameraProviderFuture.addListener(Runnable{
+        cameraProviderFuture.addListener(Runnable {
             // Camera provider is now guaranteed to be available
             val cameraProvider = cameraProviderFuture.get()
             startCamera(cameraProvider)
 
         }, ContextCompat.getMainExecutor(this))
 
+//        AndroidAssetUtil.initializeNativeAssetManager(this);
+//        val eglManager: EglManager = EglManager(this)
+//        val processor: FrameProcessor = FrameProcessor(
+//            this,
+//            eglManager.nativeContext,
+//            BINARY_GRAPH_NAME,
+//            INPUT_VIDEO_STREAM_NAME,
+//            OUTPUT_VIDEO_STREAM_NAME
+//        )
+//        processor
+//            .videoSurfaceOutput
+//            .setFlipY(FLIP_FRAMES_VERTICALLY)
+
+//        processor.addPacketCallback(
+//            OUTPUT_LANDMARKS_STREAM_NAME
+//        ) { packet: Packet ->
+//            Log.v(TAG, "Received Pose landmarks packet.")
+//            try {
+////                        NormalizedLandmarkList poseLandmarks = PacketGetter.getProto(packet, NormalizedLandmarkList.class);
+//                val landmarksRaw = PacketGetter.getProtoBytes(packet)
+////                val poseLandmarks = LandmarkList.parseFrom(landmarksRaw)
+//                Log.v(
+//                    TAG,
+//                    "[TS:" + packet.timestamp + "] " + landmarksRaw
+//                )
+////                val srh: SurfaceHolder = previewDisplayView.getHolder()
+////
+////                  -- this line cannot Running --
+////                    Canvas canvas = null;
+////                    try {
+////                        canvas= srh.lockCanvas();
+////                        synchronized(srh){
+////                            Paint paint = new Paint();
+////                            paint.setColor(Color.RED);
+////                            canvas.drawCircle(10.0f,10.0f,10.0f,paint);
+////                        }
+////                    }finally{
+////                        if(canvas != null){
+////                            srh.unlockCanvasAndPost(canvas);
+////                        }
+////                    }
+//////                    processor.getVideoSurfaceOutput().setSurface(srh.getSurface());
+//            } catch (exception: Exception) {
+//                Log.e(TAG, "failed to get proto.", exception)
+//            }
+//        }
+
     }
 
-    private fun checkPermissions():Boolean {
+    private fun checkPermissions(): Boolean {
         for (permission in REQUIRED_PERMISSIONS) {
             if (ActivityCompat.checkSelfPermission(this, permission)
                 != PackageManager.PERMISSION_GRANTED
@@ -95,89 +156,71 @@ class MainActivity : AppCompatActivity(), CameraXConfig.Provider {
         return true
     }
 
-    // Create an OrtSession with the given OrtEnvironment
-    private fun createORTSession(ortEnvironment: OrtEnvironment ) : OrtSession {
-        val inputStream: InputStream = resources.openRawResource(R.raw.keypoint_rcnn_quant)
-        val byteArrayOutputStream = ByteArrayOutputStream()
-        val buffer = ByteArray(1024)
-        var len = inputStream.read(buffer)
-        while (len != -1) {
-            byteArrayOutputStream.write(buffer, 0, len)
-            len = inputStream.read(buffer)
-        }
-        val modelBytes = byteArrayOutputStream.toByteArray()
-        inputStream.close()
-        return ortEnvironment.createSession( modelBytes )
-    }
-
-    // Make predictions with given inputs
-    private fun runPrediction( image: Image , ortSession: OrtSession , ortEnvironment: OrtEnvironment ) : Float {
-        // Get the name of the input node
-        val inputName = ortSession.inputNames?.iterator()?.next()
-
-        // convert image to an OnnxTensor
-        val inputTensor = OnnxTensor.createTensor( ortEnvironment , resizeImage(image) , longArrayOf( 512, 512 ) )
-
-        // Run the model
-        val results = ortSession.run( mapOf( inputName to inputTensor ) )
-
-        // Fetch and return the results
-        val output = results[0].value as Array<FloatArray>
-        println("Model output")
-        println(output)
-//        return output[0][0]
-        return 0.1F
-    }
-
-    private fun resizeImage(image: Image, size: Size = Size(512.0, 512.0)): FloatBuffer {
-        // Make a FloatBuffer of the inputs
-        // Convert the Bitmap object to a Mat object
-        val mat = Mat(image.height, image.width, CvType.CV_8UC4)
-
-        val bitmap = Bitmap.createBitmap(image.height, image.width, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bitmap)
-        val paint = Paint()
-        canvas.drawBitmap(bitmap, 0f, 0f, paint)
-//
-        Utils.bitmapToMat(bitmap, mat)
-
-        val resizedImage = Mat()
-        val size = Size(512.0, 512.0)
-        Imgproc.resize(mat, resizedImage, size)
-
-//        val buffer: ByteBuffer = image.planes[0].buffer
-        val buffer: ByteBuffer = ByteBuffer.allocate((resizedImage.total()).toInt())
-        resizedImage.get(0, 0, buffer.array())
-        println(buffer.asFloatBuffer())
-
-        return buffer.asFloatBuffer()
-    }
-
-
-
     @ExperimentalGetImage
-    private fun startCamera(@NonNull cameraProvider: ProcessCameraProvider ) {
+    private fun startCamera(@NonNull cameraProvider: ProcessCameraProvider) {
         // Set up the preview use case to display camera preview.
         val preview = Preview.Builder().build()
 
         val cameraSelector: CameraSelector = CameraSelector.Builder()
-                .requireLensFacing(CameraSelector.LENS_FACING_BACK).build()
-        preview.setSurfaceProvider(videoView.surfaceProvider)
+            .requireLensFacing(CameraSelector.LENS_FACING_BACK).build()
+        preview.setSurfaceProvider(previewView.surfaceProvider)
 
-        val imageAnalysis: ImageAnalysis = ImageAnalysis.Builder().setTargetResolution(UtilSize(1280, 720)).build()
-
-        val ortEnvironment = OrtEnvironment.getEnvironment()
-        val ortSession = createORTSession(ortEnvironment)
+        val imageAnalysis: ImageAnalysis =
+            ImageAnalysis.Builder().setTargetResolution(UtilSize(1280, 720)).build()
 
         imageAnalysis.setAnalyzer(executor, ImageAnalysis.Analyzer { imageProxy ->
-            val rotationDegrees = imageProxy.imageInfo.rotationDegrees
-            // insert your code here.
-            // after done, release the ImageProxy object
-            val output = runPrediction( imageProxy.image!!, ortSession , ortEnvironment )
+            //TODO: HAR implementation
+//            harHelper.detectInImage(
+//                InputImage.fromMediaImage(
+//                    imageProxy.image!!,
+//                    imageProxy.imageInfo.rotationDegrees
+//                )
+//            )
+
+            // TODO: PFD implementation
+            try {
+                val outputs = pfdHelper.pfdInference(this, imageProxy)
+            }
+            catch (e:Exception) {
+                print("Exception Occurred: ${e.message}")
+            }
 
             imageProxy.close()
         })
 
-        val camera: Camera = cameraProvider.bindToLifecycle(this, cameraSelector, preview, imageAnalysis)
+        val camera: Camera =
+            cameraProvider.bindToLifecycle(this, cameraSelector, preview, imageAnalysis)
     }
+
+    override fun onDestroy() {
+        super.onDestroy()
+
+        pfdHelper.destroyModel()
+        harHelper.destroyModel()
+    }
+
+
+//    private fun getPoseLandmarksDebugString(poseLandmarks: LandmarkProto.NormalizedLandmarkList): String? {
+//        val poseLandmarkStr = """
+//            Pose landmarks: ${poseLandmarks.landmarkCount}
+//
+//            """.trimIndent()
+//        val poseMarkers: ArrayList<Any> = ArrayList<Any>()
+//        var landmarkIndex = 0
+//        for (landmark in poseLandmarks.landmarkList) {
+//            val marker = PoseLandMark(landmark.x, landmark.y, landmark.z, landmark.visibility)
+//            //          poseLandmarkStr += "\tLandmark ["+ landmarkIndex+ "]: ("+ (landmark.getX()*720)+ ", "+ (landmark.getY()*1280)+ ", "+ landmark.getVisibility()+ ")\n";
+//            ++landmarkIndex
+//            poseMarkers.add(marker)
+//        }
+//        Log.v(
+//            TAG, """
+//     ======Degree Of Position]======
+//     test :${poseMarkers[16].getZ()},${poseMarkers[16].getZ()},${poseMarkers[16].getZ()}
+//
+//     """.trimIndent()
+//        )
+//        return poseLandmarkStr
+//    }
+
 }

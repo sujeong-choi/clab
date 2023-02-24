@@ -27,3 +27,6 @@ assets
 .gradle
 **/raw
 **/assets
+ml
+opencv
+harLib
