@@ -11,6 +11,9 @@ import org.tensorflow.lite.support.tensorbuffer.TensorBuffer
 import java.util.concurrent.Executor
 import java.util.concurrent.Executors
 
+
+// show the frames on the video
+// save the video
 class HARHelper {
     private lateinit var poseDetector: PoseDetector
     private val classificationExecutor: Executor = Executors.newSingleThreadExecutor()
@@ -40,12 +43,8 @@ class HARHelper {
     }
 
     fun harInference(context: Context, inputImage: InputImage) {
-        try {
-            harModel = HarModel.newInstance(context)
-        }
-        catch (e: Exception) {
-            println(e.message)
-        }
+        harModel = HarModel.newInstance(context)
+
         // byte buffer
         val byteBuffer = inputImage.byteBuffer!!
 

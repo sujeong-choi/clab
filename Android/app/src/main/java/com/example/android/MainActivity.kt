@@ -1,18 +1,19 @@
 package com.example.android
 
+import android.content.Context
 import android.content.pm.PackageManager
-import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.Paint
-import android.media.Image
+import android.graphics.*
 import android.os.Bundle
-import android.util.Log
+import android.util.AttributeSet
+import android.view.View
+import android.widget.ImageView
 import android.widget.Toast
 import android.widget.VideoView
 import androidx.annotation.NonNull
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.camera2.Camera2Config
 import androidx.camera.core.*
+import androidx.camera.core.Camera
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.core.app.ActivityCompat
@@ -22,23 +23,22 @@ import androidx.navigation.ui.AppBarConfiguration
 import androidx.navigation.ui.setupActionBarWithNavController
 import com.example.android.databinding.ActivityMainBinding
 import com.google.common.util.concurrent.ListenableFuture
-import com.google.mlkit.vision.common.InputImage
+import org.opencv.android.CameraBridgeViewBase
 import org.opencv.android.OpenCVLoader
+import org.tensorflow.lite.support.tensorbuffer.TensorBuffer
 import java.util.concurrent.Executor
 import java.util.concurrent.Executors
 import android.util.Size as UtilSize
-
 
 class MainActivity : AppCompatActivity(), CameraXConfig.Provider {
 
     private lateinit var appBarConfiguration: AppBarConfiguration
     private lateinit var binding: ActivityMainBinding
     private lateinit var previewView: PreviewView
+    private lateinit var previewViewSmall: ImageView
     private lateinit var videoView: VideoView
-
-
-    lateinit var cameraProviderFuture: ListenableFuture<ProcessCameraProvider>
-
+    private lateinit var cameraProviderFuture: ListenableFuture<ProcessCameraProvider>
+    private var mOpenCvCameraView: CameraBridgeViewBase? = null
     private val REQUEST_CODE_PERMISSION = 101
     private val REQUIRED_PERMISSIONS: Array<String> =
         arrayOf("android.permission.CAMERA", "android.permission.READ_EXTERNAL_STORAGE")
@@ -46,14 +46,6 @@ class MainActivity : AppCompatActivity(), CameraXConfig.Provider {
     private lateinit var harHelper: HARHelper
     private lateinit var pfdHelper: PFDHelper
 
-    // Mediapipe vars
-    private val TAG: String? = "MainActivity"
-    private val BINARY_GRAPH_NAME = "pose_world_gpu.binarypb"
-    private val INPUT_VIDEO_STREAM_NAME = "input_video"
-    private val OUTPUT_VIDEO_STREAM_NAME = "input_video"
-    private val OUTPUT_LANDMARKS_STREAM_NAME = "pose_world_landmarks"
-    private val NUM_HANDS = 2
-    private val FLIP_FRAMES_VERTICALLY = true
 
     override fun getCameraXConfig(): CameraXConfig {
         return Camera2Config.defaultConfig()
@@ -75,6 +67,11 @@ class MainActivity : AppCompatActivity(), CameraXConfig.Provider {
         setContentView(binding.root)
 
         previewView = findViewById(R.id.previewView)
+        previewViewSmall = findViewById(R.id.previewViewSmall)
+
+        //set bg color for previewViewSmall
+        previewViewSmall.setBackgroundColor(ContextCompat.getColor(this, android.R.color.darker_gray))
+
         videoView = findViewById(R.id.videoView)
 
         setSupportActionBar(binding.toolbar)
@@ -95,53 +92,6 @@ class MainActivity : AppCompatActivity(), CameraXConfig.Provider {
             startCamera(cameraProvider)
 
         }, ContextCompat.getMainExecutor(this))
-
-//        AndroidAssetUtil.initializeNativeAssetManager(this);
-//        val eglManager: EglManager = EglManager(this)
-//        val processor: FrameProcessor = FrameProcessor(
-//            this,
-//            eglManager.nativeContext,
-//            BINARY_GRAPH_NAME,
-//            INPUT_VIDEO_STREAM_NAME,
-//            OUTPUT_VIDEO_STREAM_NAME
-//        )
-//        processor
-//            .videoSurfaceOutput
-//            .setFlipY(FLIP_FRAMES_VERTICALLY)
-
-//        processor.addPacketCallback(
-//            OUTPUT_LANDMARKS_STREAM_NAME
-//        ) { packet: Packet ->
-//            Log.v(TAG, "Received Pose landmarks packet.")
-//            try {
-////                        NormalizedLandmarkList poseLandmarks = PacketGetter.getProto(packet, NormalizedLandmarkList.class);
-//                val landmarksRaw = PacketGetter.getProtoBytes(packet)
-////                val poseLandmarks = LandmarkList.parseFrom(landmarksRaw)
-//                Log.v(
-//                    TAG,
-//                    "[TS:" + packet.timestamp + "] " + landmarksRaw
-//                )
-////                val srh: SurfaceHolder = previewDisplayView.getHolder()
-////
-////                  -- this line cannot Running --
-////                    Canvas canvas = null;
-////                    try {
-////                        canvas= srh.lockCanvas();
-////                        synchronized(srh){
-////                            Paint paint = new Paint();
-////                            paint.setColor(Color.RED);
-////                            canvas.drawCircle(10.0f,10.0f,10.0f,paint);
-////                        }
-////                    }finally{
-////                        if(canvas != null){
-////                            srh.unlockCanvasAndPost(canvas);
-////                        }
-////                    }
-//////                    processor.getVideoSurfaceOutput().setSurface(srh.getSurface());
-//            } catch (exception: Exception) {
-//                Log.e(TAG, "failed to get proto.", exception)
-//            }
-//        }
 
     }
 
@@ -168,28 +118,107 @@ class MainActivity : AppCompatActivity(), CameraXConfig.Provider {
         val imageAnalysis: ImageAnalysis =
             ImageAnalysis.Builder().setTargetResolution(UtilSize(1280, 720)).build()
 
+        var lastAnalyzedTimestamp = 0L
+        val predictionInterval = 5000L
+
         imageAnalysis.setAnalyzer(executor, ImageAnalysis.Analyzer { imageProxy ->
-            //TODO: HAR implementation
-//            harHelper.detectInImage(
-//                InputImage.fromMediaImage(
-//                    imageProxy.image!!,
-//                    imageProxy.imageInfo.rotationDegrees
+            val currentTimestamp = System.currentTimeMillis()
+
+            if (currentTimestamp - lastAnalyzedTimestamp >= predictionInterval) {
+                lastAnalyzedTimestamp = System.currentTimeMillis()
+
+                try {
+                    // run mediapipe keypoint detection
+                    LocalUtils(this).frameProcessor
+
+//                harHelper.detectInImage(
+//                    InputImage.fromMediaImage(
+//                        imageProxy.image!!,
+//                        imageProxy.imageInfo.rotationDegrees
+//                    )
 //                )
-//            )
+                } catch (e: Exception) {
+                    println(e.message)
+                }
 
-            // TODO: PFD implementation
-            try {
-                val outputs = pfdHelper.pfdInference(this, imageProxy)
-            }
-            catch (e:Exception) {
-                print("Exception Occurred: ${e.message}")
+
+                try {
+                    // TODO: stop passing around Activity context like this
+                    val outputs = pfdHelper.pfdInference(this, imageProxy)
+
+                    // convert imgProxy to mutable bitmap
+                    val bitmap = LocalUtils(this).imageProxyToBitmap(imageProxy).copy(Bitmap.Config.RGB_565, true)
+
+                    // call draw function to draw keypoints on previewViewSmall
+                    drawPreview(outputs, bitmap)
+
+                    // close imageProxy
+                    imageProxy.close()
+
+                } catch (e: Exception) {
+                    print("Exception Occurred: ${e.message}")
+                }
             }
 
-            imageProxy.close()
         })
 
         val camera: Camera =
             cameraProvider.bindToLifecycle(this, cameraSelector, preview, imageAnalysis)
+    }
+
+    @ExperimentalGetImage
+    private fun drawPreview(outputs: TensorBuffer, imgBitmap: Bitmap) {
+        println(outputs.shape)
+
+        previewView.post {
+            try {
+                val canvas = Canvas(imgBitmap) // create Canvas object from Bitmap
+
+                // draw keypoints over image
+                val radius = 5f // radius of the circle to draw at each keypoint
+
+                // loop through the list of keypoints and draw a circle at each position on the canvas
+                val keypoints =
+                    outputs.floatArray // assuming tensorBuffer contains the list of keypoints
+
+                val x = 100
+                val y = 4
+                val z = 2
+                val imgSize = 512
+
+                val reshapedArray = Array(x) {
+                    Array(y) {
+                        FloatArray(z)
+                    }
+                }
+
+                var i = 0
+                for (b in 0 until x) {
+                    for (h in 0 until y) {
+                        for (w in 0 until z) {
+                            reshapedArray[b][h][w] = keypoints[i++] * imgSize
+                        }
+                    }
+                }
+
+                // final keypoint
+                val finalKeypoint = reshapedArray[0]
+
+                for (keypoint in finalKeypoint) {
+                    val kx = keypoint[0].toInt()
+                    val ky = keypoint[1].toInt()
+//                    canvas.drawCircle(kx.toFloat(), ky.toFloat(), radius, Paint())
+                }
+
+                previewViewSmall.setImageBitmap(imgBitmap)
+                previewViewSmall.invalidate()
+
+            } catch (e: Exception) {
+                print(e.message)
+            }
+
+            // set the modified Bitmap as the image for the ImageView
+        }
     }
 
     override fun onDestroy() {
@@ -198,29 +227,34 @@ class MainActivity : AppCompatActivity(), CameraXConfig.Provider {
         pfdHelper.destroyModel()
         harHelper.destroyModel()
     }
+}
 
+class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs) {
+    private val paint = Paint()
+    private val targets: MutableList<Rect> = ArrayList()
 
-//    private fun getPoseLandmarksDebugString(poseLandmarks: LandmarkProto.NormalizedLandmarkList): String? {
-//        val poseLandmarkStr = """
-//            Pose landmarks: ${poseLandmarks.landmarkCount}
-//
-//            """.trimIndent()
-//        val poseMarkers: ArrayList<Any> = ArrayList<Any>()
-//        var landmarkIndex = 0
-//        for (landmark in poseLandmarks.landmarkList) {
-//            val marker = PoseLandMark(landmark.x, landmark.y, landmark.z, landmark.visibility)
-//            //          poseLandmarkStr += "\tLandmark ["+ landmarkIndex+ "]: ("+ (landmark.getX()*720)+ ", "+ (landmark.getY()*1280)+ ", "+ landmark.getVisibility()+ ")\n";
-//            ++landmarkIndex
-//            poseMarkers.add(marker)
-//        }
-//        Log.v(
-//            TAG, """
-//     ======Degree Of Position]======
-//     test :${poseMarkers[16].getZ()},${poseMarkers[16].getZ()},${poseMarkers[16].getZ()}
-//
-//     """.trimIndent()
-//        )
-//        return poseLandmarkStr
-//    }
+    override fun onDraw(canvas: Canvas) {
+        super.onDraw(canvas)
 
+        synchronized(this) {
+            for (entry in targets) {
+                canvas.drawRect(entry, paint)
+            }
+        }
+    }
+
+    fun setTargets(sources: List<Rect>) {
+        synchronized(this) {
+            targets.clear()
+            targets.addAll(sources)
+            this.postInvalidate()
+        }
+    }
+
+    init {
+        val density = context.resources.displayMetrics.density
+        paint.strokeWidth = 2.0f * density
+        paint.color = Color.BLUE
+        paint.style = Paint.Style.STROKE
+    }
 }

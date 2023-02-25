@@ -7,7 +7,7 @@ import android.media.Image
 import android.util.Log
 import androidx.camera.core.ExperimentalGetImage
 import androidx.camera.core.ImageProxy
-import com.example.android.ml.PfdModel
+import com.example.android.ml.KeypointModel
 import com.google.android.gms.tflite.client.TfLiteInitializationOptions
 import org.tensorflow.lite.DataType
 import org.tensorflow.lite.gpu.CompatibilityList
@@ -28,7 +28,7 @@ import java.nio.channels.FileChannel
 
 
 class PFDHelper(val context: Context) {
-    private lateinit var pfdModel:PfdModel
+    private lateinit var keypointModel: KeypointModel
     private var numThreads: Int = 2
     private var currentDelegate: Int = 0
     private var imageSegmenter: ImageSegmenter? = null
@@ -44,95 +44,24 @@ class PFDHelper(val context: Context) {
             // Called if the GPU Delegate is not supported on the device
             TfLiteVision.initialize(context).addOnSuccessListener {
 //                objectDetectorListener.onInitialized()
-            }.addOnFailureListener{
+            }.addOnFailureListener {
 //                objectDetectorListener.onError("TfLiteVision failed to initialize: "
 //                        + it.message)
             }
         }
     }
 
-    private fun yuvToRgb(image: Image): Bitmap {
-        val width = image.width
-        val height = image.height
-        val yBuffer = image.planes[0].buffer
-        val uBuffer = image.planes[1].buffer
-        val vBuffer = image.planes[2].buffer
-        val ySize = yBuffer.remaining()
-        val uSize = uBuffer.remaining()
-        val vSize = vBuffer.remaining()
-
-        val nv21 = ByteArray(ySize + uSize + vSize)
-        yBuffer.get(nv21, 0, ySize)
-        vBuffer.get(nv21, ySize, vSize)
-        uBuffer.get(nv21, ySize + vSize, uSize)
-
-        val yuvImage = YuvImage(nv21, ImageFormat.NV21, width, height, null)
-        val out = ByteArrayOutputStream()
-        yuvImage.compressToJpeg(Rect(0, 0, width, height), 100, out)
-        val imageBytes = out.toByteArray()
-
-        return BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
-    }
-
-    private fun imageProxyToBitmap(image: ImageProxy): Bitmap {
-        val yBuffer = image.planes[0].buffer // Y
-        val uBuffer = image.planes[1].buffer // U
-        val vBuffer = image.planes[2].buffer // V
-
-        val ySize = yBuffer.remaining()
-        val uSize = uBuffer.remaining()
-        val vSize = vBuffer.remaining()
-
-        val nv21 = ByteArray(ySize + uSize + vSize)
-
-        // Add Y values
-        yBuffer.get(nv21, 0, ySize)
-
-        // Add VU values
-        vBuffer.get(nv21, ySize, vSize)
-        uBuffer.get(nv21, ySize + vSize, uSize)
-
-        val yuvImage = YuvImage(nv21, ImageFormat.NV21, image.width, image.height, null)
-        val out = ByteArrayOutputStream()
-        yuvImage.compressToJpeg(Rect(0, 0, yuvImage.width, yuvImage.height), 50, out)
-        val imageBytes = out.toByteArray()
-
-        return BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
-    }
-
-    fun imageProxyToTensorBuffer(image: Image, inputSize: Int): TensorBuffer {
-        val rgbBitmap = yuvToRgb(image)
-        val resizedBitmap = Bitmap.createScaledBitmap(rgbBitmap, inputSize, inputSize, false)
-        val byteBuffer = ByteBuffer.allocateDirect(resizedBitmap.width * resizedBitmap.height * 3)
-        byteBuffer.order(ByteOrder.nativeOrder())
-        val pixels = IntArray(resizedBitmap.width * resizedBitmap.height)
-        resizedBitmap.getPixels(pixels, 0, resizedBitmap.width, 0, 0, resizedBitmap.width, resizedBitmap.height)
-
-        var pixel = 0
-        for (i in 0 until resizedBitmap.width) {
-            for (j in 0 until resizedBitmap.height) {
-                val pixelVal = pixels[pixel++]
-                byteBuffer.putFloat(Color.red(pixelVal) / 255.0f)
-                byteBuffer.putFloat(Color.green(pixelVal) / 255.0f)
-                byteBuffer.putFloat(Color.blue(pixelVal) / 255.0f)
-            }
-        }
-        var fixedTensorBuffer: TensorBuffer = TensorBuffer.createFixedSize(intArrayOf(1, inputSize, inputSize, 3), DataType.FLOAT32)
-        fixedTensorBuffer.loadBuffer(byteBuffer)
-
-        return fixedTensorBuffer
-    }
 
     @ExperimentalGetImage
-    fun pfdInference(context: Context, imageProxy: ImageProxy): PfdModel.Outputs {
+    fun pfdInference(context: Context, imageProxy: ImageProxy): TensorBuffer {
         // declare tensorflow model
-        pfdModel = PfdModel.newInstance(context)
+        keypointModel = KeypointModel.newInstance(context)
 
         // target image size to feed to model
         val targetImgSize = 512
 
         // image processing
-        val bitmap: Bitmap = imageProxyToBitmap(imageProxy)
+        val bitmap: Bitmap = LocalUtils(context).imageProxyToBitmap(imageProxy)
 
         val tensorImage = TensorImage(DataType.FLOAT32)
         tensorImage.load(bitmap)
@@ -142,33 +71,37 @@ class PFDHelper(val context: Context) {
                 ResizeOp(
                     targetImgSize,
                     targetImgSize,
-                    ResizeOp.ResizeMethod.NEAREST_NEIGHBOR
+                    ResizeOp.ResizeMethod.BILINEAR
                 )
             ) //.add(new Rot90Op(numRotation))
             .build()
 
-        val tensorImageInput = imageProcessor.process(tensorImage)
+        val processedImg = imageProcessor.process(tensorImage)
 
-        // Creates inputs for reference
-        val inputFeature0 = TensorBuffer.createFixedSize(intArrayOf(1, 1, 1, 3), DataType.FLOAT32)
+        val keypointModel = KeypointModel.newInstance(context)
 
-        val inputFeature1 = TensorBuffer.createFixedSize(intArrayOf(1, 1, 14), DataType.FLOAT32)
-//        inputFeature1.loadBuffer(byteBuffer)
-        val inputFeature2 = TensorBuffer.createFixedSize(intArrayOf(1, 1, 4), DataType.FLOAT32)
-//        inputFeature2.loadBuffer(byteBuffer)
+        // Creates inputs for reference.
+        val inputFeature0 =
+            TensorBuffer.createFixedSize(intArrayOf(1, 512, 512, 3), DataType.FLOAT32)
+        inputFeature0.loadBuffer(processedImg.buffer)
 
-        // run through model
-        val outputs = pfdModel.process(inputFeature0, inputFeature1, inputFeature2)
+        // Runs model inference and gets result.
+        val outputs = keypointModel.process(inputFeature0)
+        val outputFeature0 = outputs.outputFeature0AsTensorBuffer
 
-        return outputs
+        // Create a TensorBuffer for the input tensor
+        val outputBuffer = TensorBuffer.createFixedSize(intArrayOf(1, 10, 10, 8), DataType.FLOAT32)
+        outputBuffer.loadBuffer(outputFeature0.buffer)
+
+        return outputBuffer
     }
 
-    fun perspectiveTransformation() {
+    fun perspectiveTransformation(imageProxy: ImageProxy, keyPoints: Any) {
 
     }
 
     fun destroyModel() {
         // Releases model resources if no longer used.
-        pfdModel.close()
+        keypointModel.close()
     }
 }

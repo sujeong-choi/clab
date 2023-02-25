@@ -3,29 +3,20 @@ package com.example.android
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
-import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Bundle
-import android.provider.MediaStore
 import android.util.AttributeSet
-import android.view.LayoutInflater
-import android.view.MotionEvent
-import android.view.View
-import android.view.ViewGroup
+import android.view.*
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.MediaController
 import android.widget.VideoView
 import androidx.camera.view.PreviewView
 import androidx.fragment.app.Fragment
 import androidx.navigation.fragment.findNavController
 import com.example.android.databinding.VideoFragmentBinding
-import com.example.android.ml.PfdModel
-import org.tensorflow.lite.DataType
-import org.tensorflow.lite.support.image.TensorImage
-import org.tensorflow.lite.support.tensorbuffer.TensorBuffer
 import java.lang.Exception
-import java.nio.ByteBuffer
 
 /**
  * A simple [Fragment] subclass as the default destination in the navigation.
@@ -35,7 +26,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
     private lateinit var videoView: VideoView
     private lateinit var timeLapseView: VideoView
     private lateinit var previewView: PreviewView
-    private lateinit var previewViewSmall: PreviewView
+    private lateinit var previewViewSmall: ImageView
     private lateinit var mediaController: MediaController
 
 
@@ -195,8 +186,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
             // create metadataretreiver
             try {
                 mediaMetadataRetriever.setDataSource(videoUri!!.path)
-            }
-            catch (e:Exception) {
+            } catch (e: Exception) {
                 println(e.message)
             }
 

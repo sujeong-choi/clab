@@ -84,14 +84,12 @@ dependencies {
     implementation 'org.tensorflow:tensorflow-lite-gpu-delegate-plugin:0.4.0'
     implementation 'org.tensorflow:tensorflow-lite-gpu:2.10.0'
 
-    // Import mediapipe
-    // MediaPipe solution-core is the foundation of any MediaPipe Solutions.
-//    implementation 'com.google.mediapipe:solution-core:latest.release'
-//    // Optional: MediaPipe Face Detection Solution.
-//    implementation 'com.google.mediapipe:facedetection:latest.release'
-//    // Optional: MediaPipe Face Mesh Solution.
-//    implementation 'com.google.mediapipe:facemesh:latest.release'
-//    // Optional: MediaPipe Hands Solution.
-//    implementation 'com.google.mediapipe:hands:latest.release'
-    implementation files("F:\\Workspace\\mediapipe arr\\mediapipe_world_pose_detection.aar")
+    // MediaPipe deps
+    implementation fileTree(dir: 'F:/Workspace/clab/Android/app/libs', include: ['*.aar', '*.jar'], exclude: [])
+    implementation 'com.google.flogger:flogger:0.3.1'
+    implementation 'com.google.flogger:flogger-system-backend:0.3.1'
+    implementation 'com.google.code.findbugs:jsr305:3.0.2'
+    implementation 'com.google.guava:guava:27.0.1-android'
+    implementation 'com.google.guava:guava:27.0.1-android'
+    implementation 'com.google.protobuf:protobuf-java:3.11.4'
 }
