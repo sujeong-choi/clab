@@ -25,7 +25,7 @@ class Onnx2Tflite():
             tf.lite.OpsSet.SELECT_TF_OPS # enable TensorFlow ops.
         ]
         tflite_model = converter.convert()
-        tflite_model_path = "data/tflite-model"
+        tflite_model_path = "data/tflite-model.tflite"
         with open(tflite_model_path, 'wb') as f:
             f.write(tflite_model)
         print("success to make and save tflite file\n")
