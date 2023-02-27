@@ -4,17 +4,18 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.*
 import android.os.Bundle
-import android.util.AttributeSet
+import android.os.Environment
+import android.util.Log
 import android.view.View
-import android.widget.ImageView
-import android.widget.Toast
-import android.widget.VideoView
+import android.widget.*
 import androidx.annotation.NonNull
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.camera2.Camera2Config
 import androidx.camera.core.*
 import androidx.camera.core.Camera
 import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.video.*
+import androidx.camera.video.VideoCapture
 import androidx.camera.view.PreviewView
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -23,12 +24,16 @@ import androidx.navigation.ui.AppBarConfiguration
 import androidx.navigation.ui.setupActionBarWithNavController
 import com.example.android.databinding.ActivityMainBinding
 import com.google.common.util.concurrent.ListenableFuture
+import com.google.mlkit.vision.common.InputImage
 import org.opencv.android.CameraBridgeViewBase
 import org.opencv.android.OpenCVLoader
-import org.tensorflow.lite.support.tensorbuffer.TensorBuffer
+import java.io.File
+import java.text.SimpleDateFormat
+import java.util.*
 import java.util.concurrent.Executor
 import java.util.concurrent.Executors
 import android.util.Size as UtilSize
+
 
 class MainActivity : AppCompatActivity(), CameraXConfig.Provider {
 
@@ -37,14 +42,29 @@ class MainActivity : AppCompatActivity(), CameraXConfig.Provider {
     private lateinit var previewView: PreviewView
     private lateinit var previewViewSmall: ImageView
     private lateinit var videoView: VideoView
+    private lateinit var rectOverlay: RectOverlay
+    private lateinit var recordButton: Button
+    private lateinit var recordText: TextView
+    private var isRecording: Boolean = false
     private lateinit var cameraProviderFuture: ListenableFuture<ProcessCameraProvider>
     private var mOpenCvCameraView: CameraBridgeViewBase? = null
     private val REQUEST_CODE_PERMISSION = 101
     private val REQUIRED_PERMISSIONS: Array<String> =
-        arrayOf("android.permission.CAMERA", "android.permission.READ_EXTERNAL_STORAGE")
+        arrayOf(
+            "android.permission.CAMERA",
+            "android.permission.READ_EXTERNAL_STORAGE",
+            "android.permission.WRITE_EXTERNAL_STORAGE",
+            "android.permission.RECORD_AUDIO"
+        )
     private val executor: Executor = Executors.newSingleThreadExecutor()
     private lateinit var harHelper: HARHelper
     private lateinit var pfdHelper: PFDHelper
+    private lateinit var videoFile: File
+    private lateinit var recorder: Recording
+    private var videoCapture: VideoCapture<Recorder>? = null
+    private lateinit var localUtils: LocalUtils
+
+    private val TAG = "MAIN"
 
 
     override fun getCameraXConfig(): CameraXConfig {
@@ -61,18 +81,29 @@ class MainActivity : AppCompatActivity(), CameraXConfig.Provider {
         }
 
         pfdHelper = PFDHelper(this)
-        harHelper = HARHelper()
+        harHelper = HARHelper(this)
+        localUtils = LocalUtils(this)
 
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        recordButton = findViewById(R.id.recordButton)
+        recordText = findViewById(R.id.recordText)
         previewView = findViewById(R.id.previewView)
         previewViewSmall = findViewById(R.id.previewViewSmall)
 
         //set bg color for previewViewSmall
-        previewViewSmall.setBackgroundColor(ContextCompat.getColor(this, android.R.color.darker_gray))
+        previewViewSmall.setBackgroundColor(
+            ContextCompat.getColor(
+                this,
+                android.R.color.darker_gray
+            )
+        )
 
         videoView = findViewById(R.id.videoView)
+        rectOverlay = findViewById(R.id.rectOverlay)
+
+        videoFile = createVideoFile()
 
         setSupportActionBar(binding.toolbar)
 
@@ -92,6 +123,34 @@ class MainActivity : AppCompatActivity(), CameraXConfig.Provider {
             startCamera(cameraProvider)
 
         }, ContextCompat.getMainExecutor(this))
+
+        recordButton.setOnClickListener {
+            isRecording = !isRecording
+            if (isRecording) {
+                recordText.visibility = View.VISIBLE
+                recordButton.text = "STOP"
+                previewViewSmall.visibility = View.VISIBLE
+
+                // start video recording
+                startRecording()
+
+            } else {
+                recordText.visibility = View.GONE
+                recordButton.text = "RECORD"
+                previewViewSmall.visibility = View.GONE
+
+                // stop video recording
+                stopRecording()
+                rectOverlay.clear()
+            }
+        }
+    }
+
+    private fun startRecording() {
+
+    }
+
+    private fun stopRecording() {
 
     }
 
@@ -115,28 +174,36 @@ class MainActivity : AppCompatActivity(), CameraXConfig.Provider {
             .requireLensFacing(CameraSelector.LENS_FACING_BACK).build()
         preview.setSurfaceProvider(previewView.surfaceProvider)
 
+        val recorder = Recorder.Builder()
+            .setExecutor(executor)
+            .build()
+        videoCapture = VideoCapture.withOutput(recorder)
+
         val imageAnalysis: ImageAnalysis =
             ImageAnalysis.Builder().setTargetResolution(UtilSize(1280, 720)).build()
 
         var lastAnalyzedTimestamp = 0L
-        val predictionInterval = 5000L
+        val predictionInterval = 3000L
 
         imageAnalysis.setAnalyzer(executor, ImageAnalysis.Analyzer { imageProxy ->
             val currentTimestamp = System.currentTimeMillis()
 
-            if (currentTimestamp - lastAnalyzedTimestamp >= predictionInterval) {
+            if (isRecording && currentTimestamp - lastAnalyzedTimestamp >= predictionInterval) {
                 lastAnalyzedTimestamp = System.currentTimeMillis()
 
                 try {
-                    // run mediapipe keypoint detection
-                    LocalUtils(this).frameProcessor
+                    // initialize skeleton extractor for har
+                    harHelper.detectInImage(
+                        InputImage.fromMediaImage(
+                            imageProxy.image!!,
+                            imageProxy.imageInfo.rotationDegrees
+                        )
+                    )
 
-//                harHelper.detectInImage(
-//                    InputImage.fromMediaImage(
-//                        imageProxy.image!!,
-//                        imageProxy.imageInfo.rotationDegrees
-//                    )
-//                )
+                    harHelper.harInference(InputImage.fromMediaImage(
+                        imageProxy.image!!,
+                        imageProxy.imageInfo.rotationDegrees
+                    ))
                 } catch (e: Exception) {
                     println(e.message)
                 }
@@ -144,75 +211,90 @@ class MainActivity : AppCompatActivity(), CameraXConfig.Provider {
 
                 try {
                     // TODO: stop passing around Activity context like this
-                    val outputs = pfdHelper.pfdInference(this, imageProxy)
-
-                    // convert imgProxy to mutable bitmap
-                    val bitmap = LocalUtils(this).imageProxyToBitmap(imageProxy).copy(Bitmap.Config.RGB_565, true)
+                    val imgBitmap = localUtils.imageProxyToBitmap(imageProxy)
+//                    val keyPoints = pfdHelper.pfdInference(imgBitmap)
 
                     // call draw function to draw keypoints on previewViewSmall
-                    drawPreview(outputs, bitmap)
-
-                    // close imageProxy
-                    imageProxy.close()
+//                    drawPreview(keyPoints, imgBitmap)
 
                 } catch (e: Exception) {
                     print("Exception Occurred: ${e.message}")
                 }
             }
 
+            // close imageProxy
+            imageProxy.close()
         })
 
-        val camera: Camera =
-            cameraProvider.bindToLifecycle(this, cameraSelector, preview, imageAnalysis)
+        val viewPort: ViewPort = previewView.viewPort!!
+        val useCaseGroup = UseCaseGroup.Builder()
+            .setViewPort(viewPort)
+            .addUseCase(preview)
+            .addUseCase(imageAnalysis)
+            .build()
+
+        try {
+            // Bind use cases to camera
+            val camera: Camera =
+                cameraProvider.bindToLifecycle(
+                    this,
+                    cameraSelector,
+                    useCaseGroup,
+//                    videoCapture,
+                )
+        } catch (exc: Exception) {
+            Log.e(TAG, "Use case binding failed", exc)
+        }
+    }
+
+    private fun createVideoFile(): File {
+        val videoFileName =
+            "VIDEO_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())}.mp4"
+        val storageDir = getExternalFilesDir(Environment.DIRECTORY_MOVIES)
+        return File(storageDir, videoFileName)
     }
 
     @ExperimentalGetImage
-    private fun drawPreview(outputs: TensorBuffer, imgBitmap: Bitmap) {
-        println(outputs.shape)
-
+    private fun drawPreview(keyPoints: Array<FloatArray>, imgBitmap: Bitmap) {
         previewView.post {
             try {
                 val canvas = Canvas(imgBitmap) // create Canvas object from Bitmap
 
                 // draw keypoints over image
-                val radius = 5f // radius of the circle to draw at each keypoint
+                val radius = 30f
 
-                // loop through the list of keypoints and draw a circle at each position on the canvas
-                val keypoints =
-                    outputs.floatArray // assuming tensorBuffer contains the list of keypoints
+                // TODO: remove this
+                // tempKeypoint definition after testing transformation
+                val tempKeypointArray = arrayOf(
+                    floatArrayOf(445f, 566f),
+                    floatArrayOf(845f, 566f),
+                    floatArrayOf(845f, 966f),
+                    floatArrayOf(445f, 966f)
+                )
 
-                val x = 100
-                val y = 4
-                val z = 2
-                val imgSize = 512
+//                 val finalKeypoint = reshapedArray
+                val finalKeypoint = tempKeypointArray
 
-                val reshapedArray = Array(x) {
-                    Array(y) {
-                        FloatArray(z)
-                    }
-                }
-
-                var i = 0
-                for (b in 0 until x) {
-                    for (h in 0 until y) {
-                        for (w in 0 until z) {
-                            reshapedArray[b][h][w] = keypoints[i++] * imgSize
-                        }
-                    }
-                }
-
-                // final keypoint
-                val finalKeypoint = reshapedArray[0]
-
-                for (keypoint in finalKeypoint) {
+                for (keypoint in tempKeypointArray) {
                     val kx = keypoint[0].toInt()
                     val ky = keypoint[1].toInt()
-//                    canvas.drawCircle(kx.toFloat(), ky.toFloat(), radius, Paint())
+
+                    val paint = Paint().apply {
+                        color = Color.RED
+                    }
+                    canvas.drawCircle(kx.toFloat(), ky.toFloat(), radius, paint)
                 }
 
-                previewViewSmall.setImageBitmap(imgBitmap)
-                previewViewSmall.invalidate()
+                rectOverlay.drawOverlay(finalKeypoint)
 
+                // perform perspective transformation and show image on previewViewSmall
+                previewViewSmall.setImageBitmap(
+                    pfdHelper.perspectiveTransformation(
+                        imgBitmap,
+                        finalKeypoint
+                    )
+                )
+                previewViewSmall.invalidate()
             } catch (e: Exception) {
                 print(e.message)
             }
@@ -226,35 +308,5 @@ class MainActivity : AppCompatActivity(), CameraXConfig.Provider {
 
         pfdHelper.destroyModel()
         harHelper.destroyModel()
-    }
-}
-
-class OverlayView(context: Context, attrs: AttributeSet) : View(context, attrs) {
-    private val paint = Paint()
-    private val targets: MutableList<Rect> = ArrayList()
-
-    override fun onDraw(canvas: Canvas) {
-        super.onDraw(canvas)
-
-        synchronized(this) {
-            for (entry in targets) {
-                canvas.drawRect(entry, paint)
-            }
-        }
-    }
-
-    fun setTargets(sources: List<Rect>) {
-        synchronized(this) {
-            targets.clear()
-            targets.addAll(sources)
-            this.postInvalidate()
-        }
-    }
-
-    init {
-        val density = context.resources.displayMetrics.density
-        paint.strokeWidth = 2.0f * density
-        paint.color = Color.BLUE
-        paint.style = Paint.Style.STROKE
     }
 }

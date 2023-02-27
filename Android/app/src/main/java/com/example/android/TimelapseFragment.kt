@@ -30,5 +30,7 @@ class TimelapseFragment : Fragment() {
         binding.prevButton.setOnClickListener{
             findNavController().navigate(R.id.action_TimelapseFragment_to_VideoFragment)
         }
+
+        //TODO: find and display previous timelapse videos
     }
 }

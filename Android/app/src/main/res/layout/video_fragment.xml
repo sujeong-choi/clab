@@ -59,22 +59,53 @@
             android:layout_width="fill_parent"
             android:layout_height="fill_parent"
             android:layout_marginTop="30dp"
-            android:translationZ="10dp"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintHorizontal_bias="0.491"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toTopOf="parent" />
+            app:layout_constraintTop_toTopOf="parent" >
+        </androidx.camera.view.PreviewView>
+
+        <com.example.android.RectOverlay
+            android:id="@+id/rectOverlay"
+            android:layout_marginTop="30dp"
+            android:layout_width="fill_parent"
+            android:layout_height="fill_parent"
+            />
 
         <ImageView
             android:id="@+id/previewViewSmall"
             android:layout_width="150dp"
             android:layout_height="250dp"
             android:layout_marginTop="30dp"
-            android:translationZ="100dp"
+            android:visibility="gone"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintHorizontal_bias="0.491"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toTopOf="parent" />
+            app:layout_constraintTop_toTopOf="parent"
+            android:contentDescription="Show Painting Preview" />
+
+        <TextView
+            android:id="@+id/recordText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="30dp"
+            android:text="Recording"
+            android:background="#80000000"
+            android:textColor="#ffffff"
+            android:textSize="15sp"
+            android:textStyle="bold"
+            android:padding="16dp"
+            android:visibility="gone"
+            android:layout_gravity="end"
+            android:alpha="0.8" />
+
+        <Button
+            android:id="@+id/recordButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="30dp"
+            android:layout_gravity="bottom|center_horizontal"
+            android:text="Record" />
 
         <VideoView
             android:id="@+id/videoView"
@@ -82,7 +113,6 @@
             android:layout_height="fill_parent"
             android:layout_gravity="center"
             android:layout_marginTop="30dp"
-            android:translationZ="10dp"
             android:visibility="gone"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintHorizontal_bias="0.491"
@@ -95,7 +125,6 @@
             android:layout_height="250dp"
             android:layout_gravity="left|top"
             android:layout_marginTop="30dp"
-            android:translationZ="5dp"
             android:visibility="gone"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintHorizontal_bias="0.491"

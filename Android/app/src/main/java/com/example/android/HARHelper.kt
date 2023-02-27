@@ -14,12 +14,12 @@ import java.util.concurrent.Executors
 
 // show the frames on the video
 // save the video
-class HARHelper {
+class HARHelper(val context: Context) {
     private lateinit var poseDetector: PoseDetector
     private val classificationExecutor: Executor = Executors.newSingleThreadExecutor()
     private lateinit var harModel: HarModel
 
-    constructor() {
+    init {
         // Pose detector
         val options = PoseDetectorOptions.Builder()
             .setDetectorMode(PoseDetectorOptions.STREAM_MODE)
@@ -37,12 +37,13 @@ class HARHelper {
             ) { task ->
                 val pose = task.result
 
-                // TODO: HAR Model Implementation
-                // println(pose.allPoseLandmarks)
+                 println(pose.allPoseLandmarks)
+
+                // TODO: HarInference
             }
     }
 
-    fun harInference(context: Context, inputImage: InputImage) {
+    fun harInference(inputImage: InputImage) {
         harModel = HarModel.newInstance(context)
 
         // byte buffer
@@ -50,7 +51,7 @@ class HARHelper {
 
         // Creates inputs for reference.
         val inputFeature0 = TensorBuffer.createFixedSize(intArrayOf(16, 3, 6, 144, 25, 2), DataType.FLOAT32)
-        inputFeature0.loadBuffer(byteBuffer)
+//        inputFeature0.loadBuffer(byteBuffer)
 
         // Runs model inference and gets result.
         val outputs = harModel.process(inputFeature0)

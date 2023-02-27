@@ -3,6 +3,7 @@ package com.example.android
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Bundle
@@ -12,6 +13,7 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.MediaController
 import android.widget.VideoView
+import androidx.camera.core.ExperimentalGetImage
 import androidx.camera.view.PreviewView
 import androidx.fragment.app.Fragment
 import androidx.navigation.fragment.findNavController
@@ -28,7 +30,9 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
     private lateinit var previewView: PreviewView
     private lateinit var previewViewSmall: ImageView
     private lateinit var mediaController: MediaController
-
+    private lateinit var localUtils: LocalUtils
+    private lateinit var harHelper: HARHelper
+    private lateinit var pfdHelper: PFDHelper
 
     // Create a MediaMetadataRetriever
     private lateinit var mediaMetadataRetriever: MediaMetadataRetriever
@@ -59,6 +63,9 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
         timeLapseView = binding.timelapseView
         previewView = binding.previewView
         previewViewSmall = binding.previewViewSmall
+        pfdHelper = PFDHelper(requireContext())
+        harHelper = HARHelper(requireContext())
+        localUtils = LocalUtils(requireContext())
 
         // allow dragging for android
         // TODO: Disable drag outside parent container area
@@ -178,6 +185,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
         }
     }
 
+    @ExperimentalGetImage
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == VIDEO_REQUEST_CODE && resultCode == Activity.RESULT_OK) {
@@ -198,6 +206,27 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
             videoView.setVideoURI(videoUri)
             videoView.requestFocus()
             videoView.start()
+
+            // extract video frames
+            val videoFrames: List<Bitmap> = localUtils.getVideoFrames(mediaMetadataRetriever)
+
+            // pass all video frames to pfd inference function
+            // fix only pass one frame
+            val keyPoints = pfdHelper.pfdInference(videoFrames[0])
+
+            // TODO: draw keypoints on top of videoView
+
+            // perform perspective transformation on frames
+            val transformedBitmaps = pfdHelper.perspectiveTransformation(videoFrames, keyPoints)
+
+            // save keyPoints as a timelapse
+            val outputDir = requireContext().filesDir // or context.cacheDir
+
+            val width = mediaMetadataRetriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)!!.toInt()
+            val height = mediaMetadataRetriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)!!.toInt()
+            val frameRate = mediaMetadataRetriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_CAPTURE_FRAMERATE)!!.toInt()
+
+            pfdHelper.saveVideoFromBitmaps(transformedBitmaps, outputDir.path, width, height, frameRate)
 
             timeLapseView.visibility = View.VISIBLE
             timeLapseView.setVideoURI(videoUri)

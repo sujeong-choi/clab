@@ -3,7 +3,10 @@ package com.example.android
 import android.content.Context
 import android.graphics.*
 import android.media.Image
+import android.media.MediaMetadataRetriever
+import android.media.ThumbnailUtils
 import android.util.Log
+import androidx.camera.core.ExperimentalGetImage
 import androidx.camera.core.ImageProxy
 import com.google.mediapipe.components.ExternalTextureConverter
 import com.google.mediapipe.components.FrameProcessor
@@ -12,12 +15,14 @@ import com.google.mediapipe.framework.AndroidAssetUtil
 import com.google.mediapipe.framework.Packet
 import com.google.mediapipe.framework.PacketGetter
 import com.google.mediapipe.glutil.EglManager
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.common.internal.ImageConvertUtils
 import com.google.protobuf.InvalidProtocolBufferException
-import org.tensorflow.lite.DataType
-import org.tensorflow.lite.support.tensorbuffer.TensorBuffer
+import org.opencv.android.Utils
+import org.opencv.core.CvType
+import org.opencv.core.Mat
 import java.io.ByteArrayOutputStream
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
+import kotlin.math.abs
 
 
 class LocalUtils(context: Context) {
@@ -100,85 +105,54 @@ class LocalUtils(context: Context) {
     }
 
     // PFD Utils
-    private fun yuvToRgb(image: Image): Bitmap {
-        val width = image.width
-        val height = image.height
-        val yBuffer = image.planes[0].buffer
-        val uBuffer = image.planes[1].buffer
-        val vBuffer = image.planes[2].buffer
-        val ySize = yBuffer.remaining()
-        val uSize = uBuffer.remaining()
-        val vSize = vBuffer.remaining()
-
-        val nv21 = ByteArray(ySize + uSize + vSize)
-        yBuffer.get(nv21, 0, ySize)
-        vBuffer.get(nv21, ySize, vSize)
-        uBuffer.get(nv21, ySize + vSize, uSize)
-
-        val yuvImage = YuvImage(nv21, ImageFormat.NV21, width, height, null)
-        val out = ByteArrayOutputStream()
-        yuvImage.compressToJpeg(Rect(0, 0, width, height), 100, out)
-        val imageBytes = out.toByteArray()
-
-        return BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
+    fun bitmapToMat(bitmap: Bitmap): Mat {
+        val mat = Mat(bitmap.height, bitmap.width, CvType.CV_8UC4)
+        Utils.bitmapToMat(bitmap, mat)
+        return mat
     }
 
-    fun imageProxyToTensorBuffer(image: Image, inputSize: Int): TensorBuffer {
-        val rgbBitmap = yuvToRgb(image)
-        val resizedBitmap = Bitmap.createScaledBitmap(rgbBitmap, inputSize, inputSize, false)
-        val byteBuffer = ByteBuffer.allocateDirect(resizedBitmap.width * resizedBitmap.height * 3)
-        byteBuffer.order(ByteOrder.nativeOrder())
-        val pixels = IntArray(resizedBitmap.width * resizedBitmap.height)
-        resizedBitmap.getPixels(
-            pixels,
-            0,
-            resizedBitmap.width,
-            0,
-            0,
-            resizedBitmap.width,
-            resizedBitmap.height
-        )
+    fun matToBitmap(mat: Mat): Bitmap? {
+        // Create a new Bitmap object
+        val bitmap = Bitmap.createBitmap(mat.cols(), mat.rows(), Bitmap.Config.ARGB_8888)
 
-        var pixel = 0
-        for (i in 0 until resizedBitmap.width) {
-            for (j in 0 until resizedBitmap.height) {
-                val pixelVal = pixels[pixel++]
-                byteBuffer.putFloat(Color.red(pixelVal) / 255.0f)
-                byteBuffer.putFloat(Color.green(pixelVal) / 255.0f)
-                byteBuffer.putFloat(Color.blue(pixelVal) / 255.0f)
-            }
+        // Convert the Mat object to a Bitmap object using OpenCV's Utils class
+        Utils.matToBitmap(mat, bitmap)
+
+        return bitmap
+    }
+
+    @ExperimentalGetImage
+    fun imageProxyToBitmap(imageProxy: ImageProxy): Bitmap {
+        val image: InputImage =
+            InputImage.fromMediaImage(imageProxy.image!!, imageProxy.imageInfo.rotationDegrees);
+
+        return ImageConvertUtils.getInstance().getUpRightBitmap(image)
+            .copy(Bitmap.Config.ARGB_8888, true)
+    }
+
+    data class BboxCenter(val centerX: Float, val centerY: Float, val width: Float, val height: Float)
+
+    fun calculateBboxCenter(bbox: Array<FloatArray>): BboxCenter {
+        val bboxWidth = abs(bbox[0][1] - bbox[1][1])
+        val bboxHeight = abs(bbox[0][0] - bbox[3][0])
+        val centerX = bbox[0][0] + bboxWidth / 2
+        val centerY = bbox[0][1] + bboxHeight / 2
+        return BboxCenter(centerX, centerY, bboxWidth, bboxHeight)
+    }
+
+    fun getVideoFrames(metadataRetriever: MediaMetadataRetriever): List<Bitmap> {
+        val videoFrames = mutableListOf<Bitmap>()
+
+        val duration = metadataRetriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLong() ?: 0
+        val numFrames = duration / 1000 * 30 // Assumes 30 frames per second
+        for (i in 0 until numFrames) {
+            val frameTime = i * 1000L / 30 // Assumes 30 frames per second
+            val frame = metadataRetriever.getFrameAtTime(frameTime, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+            val thumbnail = ThumbnailUtils.extractThumbnail(frame, 640, 480) // Resize for performance
+            videoFrames.add(thumbnail)
         }
-        var fixedTensorBuffer: TensorBuffer =
-            TensorBuffer.createFixedSize(intArrayOf(1, inputSize, inputSize, 3), DataType.FLOAT32)
-        fixedTensorBuffer.loadBuffer(byteBuffer)
-
-        return fixedTensorBuffer
-    }
-
-    fun imageProxyToBitmap(image: ImageProxy): Bitmap {
-        val yBuffer = image.planes[0].buffer // Y
-        val uBuffer = image.planes[1].buffer // U
-        val vBuffer = image.planes[2].buffer // V
-
-        val ySize = yBuffer.remaining()
-        val uSize = uBuffer.remaining()
-        val vSize = vBuffer.remaining()
-
-        val nv21 = ByteArray(ySize + uSize + vSize)
-
-        // Add Y values
-        yBuffer.get(nv21, 0, ySize)
-
-        // Add VU values
-        vBuffer.get(nv21, ySize, vSize)
-        uBuffer.get(nv21, ySize + vSize, uSize)
-
-        val yuvImage = YuvImage(nv21, ImageFormat.NV21, image.width, image.height, null)
-        val out = ByteArrayOutputStream()
-        yuvImage.compressToJpeg(Rect(0, 0, yuvImage.width, yuvImage.height), 50, out)
-        val imageBytes = out.toByteArray()
-
-        return BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
+        metadataRetriever.release()
+        return videoFrames
     }
 
     // HAR Utils
