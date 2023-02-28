@@ -72,6 +72,8 @@ class PoseDetector():
     
     #skeleton world point list 반환(키포인트 리스트, 신뢰도 리스트, 신뢰도 평균)
     #엉덩이 쪽 좌표를 0,0,0으로 두고 계산한 상체의 3D 공간 좌표
+    #skeleton world point list return (keypoint list, reliability list, reliability average)
+    #3D spatial coordinates of the upper body calculated with the hip coordinates as 0,0,0
     def getUpperWorldPoints(self):
         lm = []
         visibility_list = []

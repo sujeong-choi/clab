@@ -77,31 +77,23 @@ class NTU_Reader():
             if ('120' not in self.dataset) and ('38' not in self.dataset):  # for NTU 60, only one folder
                 break
 
-
+    # Function to read the created skeleton file
     def read_file(self, file_path):
-        skeleton = np.zeros((self.max_person, self.max_frame, self.max_joint, self.max_channel), dtype=np.float32)
+        skeleton = np.zeros((self.max_person, self.max_frame, self.max_joint, self.max_channel), dtype=np.float32) #(4,300,25,3)
         with open(file_path, 'r') as fr:
-            frame_num = int(fr.readline()) # 원래 총 frame 수
-            # gap = 1
-            # fps 통일
-            # if '121' not in file_path:
-            #     gap = GAP
-            #     frame_num = int(frame_num/gap)
+            frame_num = int(fr.readline()) # 원래 총 frame 수, Total number of frames originally(it will be 60 in our case)
+
             
             for frame in range(frame_num):
-                person_num = int(fr.readline())
-                for person in range(person_num):
-                    _ = fr.readline().strip().split() # person ID
-                    joint_num = int(fr.readline())
-                    for joint in range(joint_num):
-                        joint_info = fr.readline().strip().split()
-                        skeleton[person,frame,joint,:] = np.array(joint_info[:self.max_channel], dtype=np.float32)
-                # gap-1 개의 frame 건너뜀.
-                # for _ in range((gap-1)):  
-                #     person_num = int(fr.readline())
-                #     for j in range(person_num*27):
-                #         fr.readline()
-        return skeleton[:,:frame_num,:,:], frame_num
+                person_num = int(fr.readline()) #it will be 1
+                for person in range(person_num): #for each person
+                    _ = fr.readline().strip().split() # person ID(ignored)
+                    joint_num = int(fr.readline()) #it will be 25
+                    for joint in range(joint_num): #for each joint(keypoints)
+                        joint_info = fr.readline().strip().split() # extract x,y,z coordinates (ex. [0.231231, -0.23213, 0.1234])
+                        skeleton[person,frame,joint,:] = np.array(joint_info[:self.max_channel], dtype=np.float32) #add x,y,z data to skeleton list
+
+        return skeleton[:,:frame_num,:,:], frame_num    #return skeleton data & frame_num
 
     def get_nonzero_std(self, s):  # (T,V,C)
         index = s.sum(-1).sum(-1) != 0  # select valid frames
@@ -156,14 +148,16 @@ class NTU_Reader():
                 continue
 
             # Read one sample
-            data = np.zeros((self.max_channel, self.max_frame, self.max_joint, self.select_person_num), dtype=np.float32)
+            data = np.zeros((self.max_channel, self.max_frame, self.max_joint, self.select_person_num), dtype=np.float32) #(3,300,25,2)
             skeleton, frame_num = self.read_file(file_path)
             
             # Select person by max energy
-            energy = np.array([self.get_nonzero_std(skeleton[m]) for m in range(self.max_person)])
+            #(Actually, it's a meaningless code because there's only one person,
+            # but I used this code when I was learning the model, so I used it to match the format.)
+            energy = np.array([self.get_nonzero_std(skeleton[m]) for m in range(self.max_person)]) 
             index = energy.argsort()[::-1][:self.select_person_num]
             skeleton = skeleton[index]
-            data[:,:frame_num,:,:] = skeleton.transpose(3, 1, 2, 0)
+            data[:,:frame_num,:,:] = skeleton.transpose(3, 1, 2, 0) 
 
             sample_data.append(data)
             sample_path.append(file_path)

@@ -13,24 +13,34 @@ CPU_NUM = 30
 
 ray.init(num_cpus=CPU_NUM, dashboard_port=8888)
 FONTFACE = cv2.FONT_HERSHEY_DUPLEX
-FONTSCALE = 0.75
-FONTCOLOR = (0, 0, 0)  # BGR
-THICKNESS = 1
+FONTSCALE = 3
+FONTCOLOR = (0, 0, 255)  # BGR
+THICKNESS = 2
 LINETYPE = 1
+
 
 
 class FileController:
     def __init__(self, args) -> None:
-        self.video_path = args.video
+        if args.video.endswith(".mp4") or args.video.endswith(".avi"):
+            self.video_path = args.video[:-4]
+            self.isFolder = False
+            self.video_list = [args.video]
+            self.vid = cv2.VideoCapture(args.video)
+        else:
+            self.video_path = args.video
+            self.isFolder = True
+            self.video_list = [file for file in os.listdir(self.video_path) if file.endswith(".mp4") or file.endswith(".avi")]
+            
         self.label = args.label
         self.fps = args.fps
-        self.video_list = [file for file in os.listdir(self.video_path) if file.endswith(".mp4") or file.endswith(".avi")]
         self.short_side = args.short_side
         self.file_cnt = 0
         self.file_names = self.get_file_names()
         self.num_video = len(self.video_list)
         self.out_P_dict = {'S': 0,'P': 1}
         self.state = args.generate_skeleton_file
+        self.writer = None
 
         
         if self.label >= 121:
@@ -43,38 +53,54 @@ class FileController:
         return self
     
     def __next__(self) -> dict:
-        if self.file_cnt >= self.num_video-1:
-            if not self.state or not self.flip:
-                raise StopIteration
-            else:
-                self.flip=False
-                self.file_cnt = 0
+        if self.isFolder:
+            if self.file_cnt >= self.num_video-1:
+                if not self.state or not self.flip:
+                    raise StopIteration
+                else:
+                    self.flip=False
+                    self.file_cnt = 0
 
-        frames, file_name = self.read_video(self.file_cnt, self.flip)
-        self.file_cnt += 1
-        return frames, file_name
+            frames, file_name, _ = self.read_video(self.file_cnt, self.flip)
+            self.file_cnt += 1
+            return frames, file_name
+        else:
+            frames, file_name, isEnd = self.read_video(0)
+            if isEnd:
+                raise StopIteration
+            
+            return frames, file_name
 
     def __len__(self) -> int:
             return self.num_video
     
     def read_video(self, idx: int, is_flip: bool=False) -> tuple([list, str]):
-        video = self.video_list[idx]
-        frame_name = self.file_names[idx]
+        if self.isFolder:
+            video = self.video_list[idx]
+            frame_name = self.file_names[idx]
 
-        vid = cv2.VideoCapture(self.video_path + '/' +video)
-        video_fps = vid.get(cv2.CAP_PROP_FPS)
+            self.vid = cv2.VideoCapture(self.video_path + '/' +video)
+        video_fps = self.vid.get(cv2.CAP_PROP_FPS)
         if self.fps>=video_fps:
             self.fps = video_fps
+        print(str(self.fps)+" fps입니다.")
         skip_frame = float(video_fps / self.fps)
+        print(str(skip_frame)+" skip입니다.")
+        
         skip_cnt = 1
         frame_cnt = 0
         frames = []
         # frame_paths = []
         new_h, new_w = None, None
-
+        self.isEnd = False
         while True:
-            flag, frame = vid.read()
+            flag, frame = self.vid.read()
             if not flag:
+                self.isEnd = True
+                break
+            
+            if self.fps * 4 <= frame_cnt:
+                print(str(frame_cnt)+"프레임 카운트")
                 break
             
             if skip_cnt < skip_frame:
@@ -97,9 +123,11 @@ class FileController:
 
             # cv2.imwrite(frame_path, frame)
             frame_cnt += 1
-        
-        file_name = self.get_out_file_name(frame_name)
-        return frames, file_name
+        if self.isFolder:
+            file_name = self.get_out_file_name(frame_name)
+        else:
+            file_name = ""
+        return frames, file_name, self.isEnd
     
     def resize_wh(self, frame, short_side: int) -> tuple([int, int]):
         h, w = frame.shape[:2]  
@@ -136,30 +164,49 @@ class FileController:
             file_name = "S{0:03d}C001P{1:03d}R001A{2:03d}.skeleton".format(self.out_P_dict['S'], self.out_P_dict['P'], self.label)
         return file_name
         
-    def write_videos(self, idx: int, top1, res_str) -> None:
-        video = self.video_list[idx]
-        out_foler = './videos/t1o_2/'
-        vid = cv2.VideoCapture(self.video_path + '/' +video)
-        video_fps = vid.get(cv2.CAP_PROP_FPS)
-
-        flag, frame = vid.read()
-        h, w = frame.shape[:2] 
+    def write_videos(self, idx: int, top1, res_str, frames) -> None:
         fourcc = cv2.VideoWriter_fourcc(*'MP4V')
-        if not os.path.exists(out_foler) : os.mkdir(out_foler)
-        writer = cv2.VideoWriter(out_foler+video, fourcc, video_fps, (w, h), True) 
-        while True:
-            if not flag:
-                break
+        if self.isFolder:
+            video = self.video_list[idx]
+            out_foler = './videos/t1o_2/'
+            vid = cv2.VideoCapture(self.video_path + '/' +video)
+            video_fps = vid.get(cv2.CAP_PROP_FPS)
 
-            cv2.putText(frame, top1, (10, 40), FONTFACE, FONTSCALE,
-                    FONTCOLOR, THICKNESS, LINETYPE)  
-            cv2.putText(frame, res_str, (10, 80), FONTFACE, FONTSCALE,
-                    FONTCOLOR, THICKNESS, LINETYPE)   
-            writer.write(frame) 
             flag, frame = vid.read()
+            h, w = frame.shape[:2] 
+            
+            if not os.path.exists(out_foler) : os.mkdir(out_foler)
+            writer = cv2.VideoWriter(out_foler+video, fourcc, video_fps, (w, h), True) 
+            while True:
+                if not flag:
+                    break
 
-        vid.release()
-        writer.release()
+                cv2.putText(frame, top1, (10, 40), FONTFACE, FONTSCALE,
+                        FONTCOLOR, THICKNESS, LINETYPE)  
+                cv2.putText(frame, res_str, (10, 80), FONTFACE, FONTSCALE,
+                        FONTCOLOR, THICKNESS, LINETYPE)   
+                writer.write(frame) 
+                flag, frame = vid.read()
+
+            vid.release()
+            writer.release()
+        else:
+            h, w = frames[0].shape[:2]
+            if self.writer is None: 
+                video_fps = self.vid.get(cv2.CAP_PROP_FPS)
+                out_foler = './videos/'
+                self.writer = cv2.VideoWriter(out_foler+"testing.mp4", fourcc, 30, (w, h), True) 
+                print(self.fps)
+            for frame in frames:
+                cv2.putText(frame, top1, (int(w*0.3), int(h*0.5)), FONTFACE, FONTSCALE,
+                        FONTCOLOR, THICKNESS, LINETYPE)  
+                cv2.putText(frame, res_str, (10, 80), FONTFACE, 1,
+                        FONTCOLOR, THICKNESS, LINETYPE)   
+                self.writer.write(frame) 
+                
+            if self.isEnd:
+                self.vid.release()
+                self.writer.realse()
         
     def get_len(self) -> int:
         return self.num_video
