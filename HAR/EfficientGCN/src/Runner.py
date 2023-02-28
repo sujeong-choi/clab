@@ -30,7 +30,7 @@ class Runner(Initializer):
         self.init_device()
         self.init_data()
         self.init_model()
-        self.init_buffer()
+        # self.init_buffer()
 
     def init_buffer(self):
         self.buffer = np.zeros((3,15)) # 15개 label - 1분
@@ -148,17 +148,19 @@ class Runner(Initializer):
         size = 15
         for j in range(0,3):
             self.buffer[j][self.front]=prob[j]
-        self.front, self.back = int((self.front+1)%size) , int((self.back+1)%size)
+        self.front, self.back = int((self.front+1)%size) , int((self.back+1)%size)   
 
 
     def run(self):
-        pd = []
+        original_pd, updated_pd = [], []
         big3 = [0.0,0.0,0.0]
         big3_npy = None
         input_data = np.zeros((self.max_channel, self.max_frame, self.max_joint, self.select_person_num), dtype=np.float32)
         zero_arr =np.zeros((1, self.max_frame, self.max_joint, self.max_channel), dtype=np.float32)
         inputs = self.args.dataset_args[list(self.args.dataset_args.keys())[0]]['inputs']
         T = self.args.dataset_args[list(self.args.dataset_args.keys())[0]]['num_frame']
+        self.previous_label = 0
+        self.updated_label = 0
 
         self.model.eval()
         logging.info('Loading evaluating model ...')
@@ -216,9 +218,14 @@ class Runner(Initializer):
             # self.update_queue(big3_prob) # buffer 업데이트
             # print(f"buffer = {self.buffer}")
             reco_top1 = np.argmax(big3)
-            pd.append(reco_top1)
-            top1_name = action_names[reco_top1]
-            res_str = "painting:{0:.2f}%, interview:{1:.2f}%, others:{2:.2f}%".format(big3[1],big3[2],big3[0])
+            if reco_top1!=self.updated_label and reco_top1==self.previous_label: 
+                self.updated_label = reco_top1
+            self.previous_label = reco_top1    
+            original_pd.append(reco_top1)
+            updated_pd.append(self.updated_label)
+            top1_name = action_names[self.updated_label]
+            res_str = "{} {:.2f}%".format(top1_name,big3[self.updated_label])
+            # res_str = "painting:{0:.2f}%, interview:{1:.2f}%, others:{2:.2f}%".format(big3[1],big3[2],big3[0])
             # print(res_str)
             # print(out)
             # reco_top1 = out.max(1)[1]
@@ -228,7 +235,10 @@ class Runner(Initializer):
             self.videoFiles.write_videos(idx, top1_name, res_str, frames)
         
         #save all prob
-        # self.get_FNFP(pd)
+        print(f"accuracy for original label\n")
+        self.get_FNFP(original_pd)
+        print("accuracy for updated label\n")
+        self.get_FNFP(updated_pd)
         # print(f"pd={pd}")
         np.save('./har_npy',big3_npy)
 
@@ -273,35 +283,38 @@ class Runner(Initializer):
                         1,1,1,1,1,1,0,0,0,1,
                         1,1,1,1,1,1,1,1,1,1,
                         1,1,1,1,1,1,0,2,2]
-        size = len(pred)
-        FN, FP = [0,0,0],[0,0,0]
-        accuracy = 0.0
-        F = 0
+        if len(pred)!=len(gt):
+            print("예측 결과의 label 개수와 ground truth의 개수가 다르다. \n")
+        else:
+            size = len(pred)
+            FN, FP = [0,0,0],[0,0,0]
+            accuracy = 0.0
+            F = 0
 
-        for i in range(size):
+            for i in range(size):
 
-            if gt[i]==0 and pred[i] != 0 : FN[0] +=1
-            elif gt[i]!=0 and pred[i] ==0 : FP[0] +=1
+                if gt[i]==0 and pred[i] != 0 : FN[0] +=1
+                elif gt[i]!=0 and pred[i] ==0 : FP[0] +=1
 
-            # FN : painting인데 다른 label을 낸 경우
-            if gt[i]==1 and pred[i] != 1 : FN[1] +=1
-            # FP : painting이 아닌데 painting이라고 한 경우
-            elif gt[i]!=1 and pred[i] ==1 : FP[1] +=1
+                # FN : painting인데 다른 label을 낸 경우
+                if gt[i]==1 and pred[i] != 1 : FN[1] +=1
+                # FP : painting이 아닌데 painting이라고 한 경우
+                elif gt[i]!=1 and pred[i] ==1 : FP[1] +=1
 
-            if gt[i]==2 and pred[i] != 2 : FN[2] +=1
-            elif gt[i]!=2 and pred[i] ==2 : FP[2] +=1
+                if gt[i]==2 and pred[i] != 2 : FN[2] +=1
+                elif gt[i]!=2 and pred[i] ==2 : FP[2] +=1
 
-            if gt[i] != pred[i] : F +=1
-        print(f"==========other==========\n ")
-        print(f"FN 비율= {float(FN[0])/size*100} %")
-        print(f"FP 비율= {float(FP[0])/size*100} %")
-        print(f"==========painting==========\n ")
-        print(f"FN 비율= {float(FN[1])/size*100} %")
-        print(f"FP 비율= {float(FP[1])/size*100} %")
-        print(f"==========interview==========\n ")
-        print(f"FN 비율= {float(FN[2])/size*100} %")
-        print(f"FP 비율= {float(FP[2])/size*100} %")
-        print(f"accuracy = {100.0-float(F)/size*100} %")
+                if gt[i] != pred[i] : F +=1
+            print(f"==========other==========\n ")
+            print(f"FN 비율= {float(FN[0])/size*100} %")
+            print(f"FP 비율= {float(FP[0])/size*100} %")
+            print(f"==========painting==========\n ")
+            print(f"FN 비율= {float(FN[1])/size*100} %")
+            print(f"FP 비율= {float(FP[1])/size*100} %")
+            print(f"==========interview==========\n ")
+            print(f"FN 비율= {float(FN[2])/size*100} %")
+            print(f"FP 비율= {float(FP[2])/size*100} %")
+            print(f"accuracy = {100.0-float(F)/size*100} %")
     # def print_softmax(self, out: list):
         # res_str = "Prob: painting:{0:.2f}%, interview:{1:.2f}%, others:{2:.2f}%".format(out[18], out[19], sum(out[0:17]))
         # return res_str

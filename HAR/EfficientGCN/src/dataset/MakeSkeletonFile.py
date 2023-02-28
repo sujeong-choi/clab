@@ -13,9 +13,9 @@ CPU_NUM = 30
 
 ray.init(num_cpus=CPU_NUM, dashboard_port=8888)
 FONTFACE = cv2.FONT_HERSHEY_DUPLEX
-FONTSCALE = 3
+FONTSCALE = 0.5
 FONTCOLOR = (0, 0, 255)  # BGR
-THICKNESS = 2
+THICKNESS = 1
 LINETYPE = 1
 
 
@@ -83,9 +83,9 @@ class FileController:
         video_fps = self.vid.get(cv2.CAP_PROP_FPS)
         if self.fps>=video_fps:
             self.fps = video_fps
-        print(str(self.fps)+" fps입니다.")
+        # print(str(self.fps)+" fps입니다.")
         skip_frame = float(video_fps / self.fps)
-        print(str(skip_frame)+" skip입니다.")
+        # print(str(skip_frame)+" skip입니다.")
         
         skip_cnt = 1
         frame_cnt = 0
@@ -100,7 +100,7 @@ class FileController:
                 break
             
             if self.fps * 4 <= frame_cnt:
-                print(str(frame_cnt)+"프레임 카운트")
+                # print(str(frame_cnt)+"프레임 카운트")
                 break
             
             if skip_cnt < skip_frame:
@@ -192,16 +192,19 @@ class FileController:
             writer.release()
         else:
             h, w = frames[0].shape[:2]
+            if top1 == "painting" : FONTCOLOR = (0,0,255)
+            else : FONTCOLOR = (0,255,0)
             if self.writer is None: 
                 video_fps = self.vid.get(cv2.CAP_PROP_FPS)
                 out_foler = './videos/'
                 self.writer = cv2.VideoWriter(out_foler+"testing.mp4", fourcc, 30, (w, h), True) 
                 print(self.fps)
             for frame in frames:
-                cv2.putText(frame, top1, (int(w*0.3), int(h*0.5)), FONTFACE, FONTSCALE,
-                        FONTCOLOR, THICKNESS, LINETYPE)  
-                cv2.putText(frame, res_str, (10, 80), FONTFACE, 1,
-                        FONTCOLOR, THICKNESS, LINETYPE)   
+                if top1 != "others":
+                    cv2.putText(frame, res_str, (int(w*0.7), int(h*0.1)), FONTFACE, FONTSCALE,
+                            FONTCOLOR, THICKNESS, LINETYPE)  
+                # cv2.putText(frame, res_str, (10, 80), FONTFACE, 1,
+                #         FONTCOLOR, THICKNESS, LINETYPE)   
                 self.writer.write(frame) 
                 
             if self.isEnd:
