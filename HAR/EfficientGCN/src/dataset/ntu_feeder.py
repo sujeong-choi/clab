@@ -28,13 +28,15 @@ class NTU_Feeder(Dataset):
         return len(self.label)
 
     def __getitem__(self, idx):
-        data = np.array(self.data[idx])
+        data = np.array(self.data[idx]) #"data" is the information in one video (not self.data) / This is a function created by reading the npy file.
         label = self.label[idx]
         name = self.name[idx]
         # seq_len = self.seq_len[idx]
 
         # (C, max_frame, V, M) -> (I, C*2, T, V, M)
-        joint, velocity, bone = self.multi_input(data[:,:self.T,:,:])
+        # data(3,?300?,25,2) -> data_new(3,6,144,25,2)
+        # I'm not sure if it's 300 or 60.
+        joint, velocity, bone = self.multi_input(data[:,:self.T,:,:]) # self.T is 144
         data_new = []
         if 'J' in self.inputs:
             data_new.append(joint)
@@ -44,8 +46,9 @@ class NTU_Feeder(Dataset):
             data_new.append(bone)
         data_new = np.stack(data_new, axis=0)
 
-        return data_new, label, name
+        return data_new, label, name #"data_new" is the data used as input to the model.
 
+    #Function to generate bone and velocity data based on keypoints x, y, z (If the input format is correct from above, you can just take it and use it.)
     def multi_input(self, data):
         C, T, V, M = data.shape
         joint = np.zeros((C*2, T, V, M))
