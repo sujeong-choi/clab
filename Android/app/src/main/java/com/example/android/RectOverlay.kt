@@ -11,7 +11,7 @@ import android.view.View
 class RectOverlay constructor(context: Context?, attributeSet: AttributeSet?) :
     View(context, attributeSet) {
 
-    private var keyPoints: Array<FloatArray>
+    private lateinit var keyPoints:  KeypointType<Float>
     private var isDrawn: Boolean = false
     private var radius: Int = 0
     private val paint = Paint().apply {
@@ -22,7 +22,7 @@ class RectOverlay constructor(context: Context?, attributeSet: AttributeSet?) :
     private val path = Path()
 
     init {
-        keyPoints = arrayOf(floatArrayOf())
+//        keyPoints.value = mutableListOf()
     }
 
     override fun onDraw(canvas: Canvas?) {
@@ -31,10 +31,10 @@ class RectOverlay constructor(context: Context?, attributeSet: AttributeSet?) :
             path.reset()
 
             // Move to the first vertex
-            path.moveTo(keyPoints[0][0], keyPoints[0][1])
+            path.moveTo(keyPoints.value[0][0], keyPoints.value[0][1])
 
-            for (i in 1 until keyPoints.size) {
-                val keypoint = keyPoints[i]
+            for (i in 1 until keyPoints.value.size) {
+                val keypoint = keyPoints.value[i]
                 path.lineTo(keypoint[0], keypoint[1])
             }
 
@@ -44,7 +44,7 @@ class RectOverlay constructor(context: Context?, attributeSet: AttributeSet?) :
         }
     }
 
-    fun drawOverlay(newKeyPoints: Array<FloatArray>, newRadius: Int = 20) {
+    fun drawOverlay(newKeyPoints: KeypointType<Float>, newRadius: Int = 20) {
         keyPoints = newKeyPoints
         radius = newRadius
         isDrawn = true

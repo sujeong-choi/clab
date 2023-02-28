@@ -1,8 +1,8 @@
 package com.example.android
 
 import android.content.Context
-import android.graphics.*
-import android.media.Image
+import android.content.res.AssetManager
+import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
 import android.media.ThumbnailUtils
 import android.util.Log
@@ -21,11 +21,14 @@ import com.google.protobuf.InvalidProtocolBufferException
 import org.opencv.android.Utils
 import org.opencv.core.CvType
 import org.opencv.core.Mat
-import java.io.ByteArrayOutputStream
+import java.io.FileInputStream
+import java.io.IOException
+import java.nio.MappedByteBuffer
+import java.nio.channels.FileChannel
 import kotlin.math.abs
 
 
-class LocalUtils(context: Context) {
+class CommonUtils(context: Context) {
     private val TAG = "YXH"
     private val BINARY_GRAPH_NAME = "pose_tracking_gpu.binarypb"
     private val INPUT_VIDEO_STREAM_NAME = "input_video"
@@ -121,6 +124,16 @@ class LocalUtils(context: Context) {
         return bitmap
     }
 
+    @Throws(IOException::class)
+    fun getModelByteBuffer(assetManager: AssetManager, modelPath: String): MappedByteBuffer {
+        val fileDescriptor = assetManager.openFd(modelPath)
+        val inputStream = FileInputStream(fileDescriptor.fileDescriptor)
+        val fileChannel = inputStream.channel
+        val startOffset = fileDescriptor.startOffset
+        val declaredLength = fileDescriptor.declaredLength
+        return fileChannel.map(FileChannel.MapMode.READ_ONLY, startOffset, declaredLength)
+    }
+
     @ExperimentalGetImage
     fun imageProxyToBitmap(imageProxy: ImageProxy): Bitmap {
         val image: InputImage =
@@ -128,6 +141,11 @@ class LocalUtils(context: Context) {
 
         return ImageConvertUtils.getInstance().getUpRightBitmap(image)
             .copy(Bitmap.Config.ARGB_8888, true)
+    }
+
+    fun resizeBitmap(bitmap: Bitmap, targetImgSize: Int): Bitmap {
+        // resize bitmap
+        return Bitmap.createScaledBitmap(bitmap, targetImgSize, targetImgSize, false)
     }
 
     data class BboxCenter(val centerX: Float, val centerY: Float, val width: Float, val height: Float)
