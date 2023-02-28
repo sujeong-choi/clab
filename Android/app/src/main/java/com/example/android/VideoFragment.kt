@@ -344,7 +344,7 @@ class VideoFragment : Fragment(R.layout.video_fragment), CameraXConfig.Provider 
 
             // pass all video frames to pfd inference function
             // fix only pass one frame
-            val output = pfdHelper.onnxInference(videoFrames[0])
+//            val output = pfdHelper.onnxInference(videoFrames[0])
 
             // TODO: draw keypoints on top of videoView
 
