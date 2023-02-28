@@ -4,14 +4,12 @@ import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.Color
-import android.graphics.Paint
+import android.graphics.*
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Bundle
 import android.util.AttributeSet
+import android.util.DisplayMetrics
 import android.util.Log
 import android.util.Size
 import android.view.LayoutInflater
@@ -22,6 +20,7 @@ import android.widget.*
 import androidx.annotation.NonNull
 import androidx.camera.camera2.Camera2Config
 import androidx.camera.core.*
+import androidx.camera.core.Camera
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.video.Recorder
 import androidx.camera.video.VideoCapture
@@ -97,12 +96,42 @@ class VideoFragment : Fragment(R.layout.video_fragment), CameraXConfig.Provider 
         return Camera2Config.defaultConfig()
     }
 
-    @ExperimentalGetImage
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+    }
+
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
         savedInstanceState: Bundle?
     ): View? {
         binding = VideoFragmentBinding.inflate(inflater, container, false)
+
+        return binding.root
+    }
+
+    @ExperimentalGetImage
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+
+        binding.timelapseButton.setOnClickListener {
+            findNavController().navigate(R.id.action_VideoFragment_to_TimelapseFragment)
+        }
+
+        binding.selectButton.setOnClickListener {
+            val intent = Intent(Intent.ACTION_GET_CONTENT)
+            intent.type = "video/*"
+            startActivityForResult(intent, VIDEO_REQUEST_CODE)
+        }
+
+        binding.liveButton.setOnClickListener {
+            videoView.stopPlayback()
+            timeLapseView.stopPlayback()
+
+            videoView.visibility = View.GONE
+            timeLapseView.visibility = View.GONE
+            previewView.visibility = View.VISIBLE
+            previewViewSmall.visibility = View.VISIBLE
+        }
 
         // Initialize OpenCV
         if (!OpenCVLoader.initDebug()) {
@@ -263,9 +292,9 @@ class VideoFragment : Fragment(R.layout.video_fragment), CameraXConfig.Provider 
 
         // create output video file
 //        videoFile = createVideoFile()
-
-        return binding.root
     }
+
+
 
     private fun checkPermissions(): Boolean {
         for (permission in REQUIRED_PERMISSIONS) {
@@ -286,30 +315,6 @@ class VideoFragment : Fragment(R.layout.video_fragment), CameraXConfig.Provider 
 
     }
 
-    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-        super.onViewCreated(view, savedInstanceState)
-
-        binding.timelapseButton.setOnClickListener {
-            findNavController().navigate(R.id.action_VideoFragment_to_TimelapseFragment)
-        }
-
-        binding.selectButton.setOnClickListener {
-            val intent = Intent(Intent.ACTION_GET_CONTENT)
-            intent.type = "video/*"
-            startActivityForResult(intent, VIDEO_REQUEST_CODE)
-        }
-
-        binding.liveButton.setOnClickListener {
-            videoView.stopPlayback()
-            timeLapseView.stopPlayback()
-
-            videoView.visibility = View.GONE
-            timeLapseView.visibility = View.GONE
-            previewView.visibility = View.VISIBLE
-            previewViewSmall.visibility = View.VISIBLE
-        }
-    }
-
 //    private fun createVideoFile(): File {
 //        val videoFileName =
 //            "VIDEO_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())}.mp4"
@@ -327,7 +332,7 @@ class VideoFragment : Fragment(R.layout.video_fragment), CameraXConfig.Provider 
             try {
                 mediaMetadataRetriever.setDataSource(videoUri!!.path)
             } catch (e: Exception) {
-                println(e.message)
+                e.message?.let { Log.v("Error", it) }
             }
 
             // Show VideoView and set video source
@@ -393,8 +398,19 @@ class VideoFragment : Fragment(R.layout.video_fragment), CameraXConfig.Provider 
             .build()
         videoCapture = VideoCapture.withOutput(recorder)
 
+        // Get the display metrics
+        val displayMetrics = DisplayMetrics()
+        requireActivity().windowManager.defaultDisplay.getMetrics(displayMetrics)
+
+        // Calculate the screen size in pixels
+        val screenWidthPx = displayMetrics.widthPixels
+        val screenHeightPx = displayMetrics.heightPixels
+
+        // Set the target resolution based on the screen size
+        val targetResolution = Size(screenWidthPx, screenHeightPx)
+
         val imageAnalysis: ImageAnalysis =
-            ImageAnalysis.Builder().setTargetResolution(Size(1280, 720)).build()
+            ImageAnalysis.Builder().setTargetResolution(targetResolution).build()
 
         var lastAnalyzedTimestamp = 0L
         val predictionInterval = 10000L
@@ -419,7 +435,7 @@ class VideoFragment : Fragment(R.layout.video_fragment), CameraXConfig.Provider 
 //                        imageProxy.imageInfo.rotationDegrees
 //                    ))
                 } catch (e: Exception) {
-                    println(e.message)
+                    e.message?.let { Log.v("Error", it) }
                 }
 
 
@@ -427,11 +443,10 @@ class VideoFragment : Fragment(R.layout.video_fragment), CameraXConfig.Provider 
                     // TODO: stop passing around activity context like this
 
                     val imgBitmap = commonUtils.imageProxyToBitmap(imageProxy)
-//                    val keyPoints = pfdHelper.pfdInference(imgBitmap)
-//                    val pfdResult: PfdResult = pfdHelper.onnxInference(imgBitmap)
+                    // val pfdResult: PfdResult = pfdHelper.onnxInference(imgBitmap)
 
                     // call draw function to draw keypoints on previewViewSmall
-//                    drawPreview(keyPoints, imgBitmap)
+                    // drawPreview(pfdResult.keypoint.value[0], imgBitmap)
                 } catch (e: Exception) {
                     print("Exception Occurred: ${e.message}")
                 }
@@ -441,9 +456,9 @@ class VideoFragment : Fragment(R.layout.video_fragment), CameraXConfig.Provider 
             imageProxy.close()
         })
 
-        val viewPort: ViewPort = previewView.viewPort!!
+//        val viewPort: ViewPort = previewView.viewPort ?: Rect(0, 0, 720, 1280)
         val useCaseGroup = UseCaseGroup.Builder()
-            .setViewPort(viewPort)
+//            .setViewPort(viewPort)
             .addUseCase(preview)
             .addUseCase(imageAnalysis)
             .build()
@@ -471,15 +486,6 @@ class VideoFragment : Fragment(R.layout.video_fragment), CameraXConfig.Provider 
                 // draw keypoints over image
                 val radius = 30f
 
-                // TODO: remove this
-                // tempKeypoint definition after testing transformation
-//                val tempKeypointArray = arrayOf(
-//                    floatArrayOf(445f, 566f),
-//                    floatArrayOf(845f, 566f),
-//                    floatArrayOf(845f, 966f),
-//                    floatArrayOf(445f, 966f)
-//                )
-
                 for (keypoint in keyPoints.value) {
                     val kx = keypoint[0].toInt()
                     val ky = keypoint[1].toInt()
@@ -489,6 +495,8 @@ class VideoFragment : Fragment(R.layout.video_fragment), CameraXConfig.Provider 
                     }
                     canvas.drawCircle(kx.toFloat(), ky.toFloat(), radius, paint)
                 }
+
+                Log.v("Local TAG", keyPoints.toString())
 
                 rectOverlay.drawOverlay(keyPoints)
 
@@ -501,7 +509,7 @@ class VideoFragment : Fragment(R.layout.video_fragment), CameraXConfig.Provider 
                 )
                 previewViewSmall.invalidate()
             } catch (e: Exception) {
-                print(e.message)
+                e.message?.let { Log.v("Error", it) }
             }
 
             // set the modified Bitmap as the image for the ImageView

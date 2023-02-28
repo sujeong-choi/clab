@@ -8,6 +8,7 @@ import android.media.MediaCodec
 import android.media.MediaCodecInfo
 import android.media.MediaFormat
 import android.media.MediaMuxer
+import android.util.Log
 import com.google.android.gms.tflite.client.TfLiteInitializationOptions
 import org.opencv.core.Mat
 import org.opencv.core.MatOfPoint2f
@@ -141,8 +142,6 @@ class PFDHelper(val context: Context) {
                 }
             }
         }
-
-        println(sortedOutput)
         return preprocessOutput(sortedOutput)
     }
 
