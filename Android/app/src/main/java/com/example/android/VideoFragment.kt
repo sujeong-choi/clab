@@ -344,7 +344,7 @@ class VideoFragment : Fragment(R.layout.video_fragment), CameraXConfig.Provider 
 
             // pass all video frames to pfd inference function
             // fix only pass one frame
-//            val output = pfdHelper.onnxInference(videoFrames[0])
+            val output = pfdHelper.onnxInference(videoFrames[0])
 
             // TODO: draw keypoints on top of videoView
 
@@ -428,7 +428,7 @@ class VideoFragment : Fragment(R.layout.video_fragment), CameraXConfig.Provider 
 
                     val imgBitmap = commonUtils.imageProxyToBitmap(imageProxy)
 //                    val keyPoints = pfdHelper.pfdInference(imgBitmap)
-                    val pfdResult: PfdResult = pfdHelper.onnxInference(imgBitmap)
+//                    val pfdResult: PfdResult = pfdHelper.onnxInference(imgBitmap)
 
                     // call draw function to draw keypoints on previewViewSmall
 //                    drawPreview(keyPoints, imgBitmap)
