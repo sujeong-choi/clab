@@ -34,9 +34,46 @@ class EfficientGCN(nn.Module):
 
         # init parameters
         init_param(self.modules())
-
+        
+    #add preprocess(multi_input() in ntu_feeder.py)
+    def preprocess(self, x):
+        C, T, V, M = x.shape
+        joint = torch.zeros((C*2, T, V, M))
+        velocity = torch.zeros((C*2, T, V, M))
+        bone = torch.zeros((C*2, T, V, M))
+        joint[:C,:,:,:] = x
+        for i in range(V):
+            joint[C:,:,i,:] = x[:,:,i,:] - x[:,:,1,:]
+        for i in range(T-2):
+            velocity[:C,i,:,:] = x[:,i+1,:,:] - x[:,i,:,:]
+            velocity[C:,i,:,:] = x[:,i+2,:,:] - x[:,i,:,:]
+        for i in range(len(self.conn)):
+            bone[:C,:,i,:] = x[:,:,i,:] - x[:,:,self.conn[i],:]
+        bone_length = 0
+        for i in range(C):
+            bone_length += bone[i,:,:,:] ** 2
+        bone_length = torch.sqrt(bone_length) + 0.0001
+        for i in range(C):
+            bone[C+i,:,:,:] = torch.arccos(bone[i,:,:,:] / bone_length)
+            
+        x_new = []
+        if 'J' in self.inputs:
+            x_new.append(joint)
+        if 'V' in self.inputs:
+            x_new.append(velocity)
+        if 'B' in self.inputs:
+            x_new.append(bone)
+        x_new = torch.stack(x_new, axis=0)
+        x = [x_new]
+        x = torch.tensor(x)
+        x = x.type(torch.float64)
+        
+        return x
+    
     def forward(self, x):
-
+        #add preprocess(multi_input() in ntu_feeder.py)
+        x = self.preprocess(x)
+        
         N, I, C, T, V, M = x.size()
         x = x.permute(1, 0, 5, 2, 3, 4).contiguous().view(I, N*M, C, T, V)
 
