@@ -322,10 +322,10 @@ class PFDHelper(val context: Context) {
 //            }
 //        }
 
-        var topLeft = keyPoints[0]
-        var topRight = keyPoints[1]
-        var bottomLeft = keyPoints[3]
-        var bottomRight = keyPoints[2]
+        val topLeft = keyPoints[0]
+        val topRight = keyPoints[3]
+        val bottomLeft = keyPoints[1]
+        val bottomRight = keyPoints[2]
 
         val imgWidth = abs(topLeft[0] - topRight[0])
         val imgHeight = abs(topLeft[1] - bottomLeft[1])

@@ -90,10 +90,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
     private var isKeypointSelected: Boolean = false
     private var isCameraFacingFront: Boolean = false
     private var globalPfdResult: PfdResult = PfdResult()
-    private lateinit var frame: Bitmap
     private var previewSize: Size? = null
-    val frameUpdateInterval = 10000L
-    var lastFrameTimestamp = 0L
     private val REQUIRED_PERMISSIONS: Array<String> =
         arrayOf(
             "android.permission.CAMERA",
@@ -217,21 +214,21 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                 try {
                     val landmarks = NormalizedLandmarkList.parseFrom(landmarksRaw)
                     if (landmarks == null) {
-                        Log.v(
-                            TAG,
-                            "[TS:" + packet.timestamp + "] No iris landmarks."
-                        )
+//                        Log.v(
+//                            TAG,
+//                            "[TS:" + packet.timestamp + "] No iris landmarks."
+//                        )
                         return@addPacketCallback
                     }
                     // Note: If eye_presence is false, these landmarks are useless.
-                    Log.v(
-                        TAG,
-                        "[TS:"
-                                + packet.timestamp
-                                + "] #Landmarks for iris: "
-                                + landmarks.landmarkCount
-                    )
-                    Log.v(TAG, landmarks.toString())
+//                    Log.v(
+//                        TAG,
+//                        "[TS:"
+//                                + packet.timestamp
+//                                + "] #Landmarks for iris: "
+//                                + landmarks.landmarkCount
+//                    )
+//                    Log.v(TAG, landmarks.toString())
                 } catch (e: InvalidProtocolBufferException) {
                     Log.e(TAG, "Couldn't Exception received - $e")
                     return@addPacketCallback
@@ -376,13 +373,16 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
 
         // live start and stop on click listeners
         recordButton.setOnClickListener {
+            rectOverlay.clear()
             isRecording = !isRecording
+
             if (isRecording) {
                 recordText.visibility = View.VISIBLE
                 recordButton.text = "STOP"
                 previewViewSmall.visibility = View.VISIBLE
 
                 // start video recording
+                drawPreview(globalPfdResult)
 
             } else {
                 recordText.visibility = View.GONE
@@ -391,7 +391,6 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
 
                 // stop video recording
 
-                rectOverlay.clear()
             }
         }
 
@@ -399,7 +398,6 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
 //            val frame = commonUtils.surfaceTextureToBitmap(previewSize!!.width, previewSize!!.height)
 
             try {
-
                 commonUtils.getFrameBitmap(previewDisplayView) { bitmap: Bitmap? ->
                     requireActivity().runOnUiThread(java.lang.Runnable {
                         // show loading spinner
@@ -425,7 +423,11 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                         // draw keyPoints on top of previewView
                         drawKeypoints(globalPfdResult)
                     } else {
-                        Toast.makeText(requireContext(), "Painting not detected ERR01!", Toast.LENGTH_LONG)
+                        Toast.makeText(
+                            requireContext(),
+                            "Painting not detected ERR01!",
+                            Toast.LENGTH_LONG
+                        )
                             .show()
                     }
                 }
@@ -481,7 +483,10 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
 
         // setup onnx model
         ortEnv = OrtEnvironment.getEnvironment()
-        pfdSession = ortEnv.createSession(pfdHelper.readPfdModel())
+        val options = OrtSession.SessionOptions()
+        options.addNnapi()
+        options.setExecutionMode(OrtSession.SessionOptions.ExecutionMode.PARALLEL)
+        pfdSession = ortEnv.createSession(pfdHelper.readPfdModel(), options)
 
         previewDisplayView
             .holder
@@ -692,7 +697,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
 //        }
     }
 
-    private fun drawPreview(pfdResult: PfdResult, imgBitmap: Bitmap) {
+    private fun drawPreview(pfdResult: PfdResult) {
         previewView.post {
             try {
                 val keyPoints = pfdResult.keypoint.value
@@ -702,15 +707,29 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                     Toast.makeText(requireContext(), "Painting not detected!", Toast.LENGTH_LONG)
                         .show()
                 } else {
-                    // perform perspective transformation and show image on previewViewSmall
-                    previewViewSmall.setImageBitmap(
-                        imgBitmap
-//                        pfdHelper.perspectiveTransformation(
-//                            imgBitmap,
-//                            keyPoints
-//                        )
-                    )
-                    previewViewSmall.invalidate()
+                    commonUtils.getFrameBitmap(previewDisplayView) { bitmap: Bitmap? ->
+                        requireActivity().runOnUiThread(java.lang.Runnable {
+                            // show loading spinner
+                            spinner.visibility = View.VISIBLE
+                        })
+
+                        // perform perspective transformation and show image on previewViewSmall
+
+                        val transformedBitmap = bitmap?.let {
+                            pfdHelper.perspectiveTransformation(
+                                it,
+                                keyPoints[0]
+                            )
+                        }
+
+                        requireActivity().runOnUiThread(java.lang.Runnable {
+                            previewViewSmall.setImageBitmap(transformedBitmap)
+                            previewViewSmall.invalidate()
+                            // hide loading spinner
+                            spinner.visibility = View.GONE
+                        })
+                    }
+
                 }
             } catch (e: Exception) {
                 e.message?.let { Log.v("Error", it) }
