@@ -9,19 +9,14 @@ import android.media.MediaCodec
 import android.media.MediaCodecInfo
 import android.media.MediaFormat
 import android.media.MediaMuxer
-import android.util.Log
-import com.google.android.gms.tflite.client.TfLiteInitializationOptions
 import com.google.mediapipe.formats.proto.LandmarkProto
 import org.opencv.core.Mat
 import org.opencv.core.MatOfPoint2f
 import org.opencv.core.Size
 import org.opencv.imgproc.Imgproc
-import org.tensorflow.lite.task.gms.vision.TfLiteVision
 import java.nio.ByteBuffer
 import java.nio.FloatBuffer
-import java.nio.IntBuffer
 import kotlin.math.abs
-import kotlin.math.absoluteValue
 import org.opencv.core.Point as CVPoint
 
 class KeypointListType(val value: MutableList<MutableList<FloatArray>>)
@@ -46,7 +41,7 @@ class PFDHelper(val context: Context) {
 
     // Read ort model into a ByteArray, run in background
     fun readPfdModel(): ByteArray {
-        val modelID = R.raw.keypoint_rcnn_op11_quant
+        val modelID = R.raw.keypoint_rcnn
         return context.resources.openRawResource(modelID).readBytes()
     }
 

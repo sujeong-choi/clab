@@ -57,7 +57,7 @@ class HARHelper(val context: Context) {
     }
 
     fun readHarModel(): ByteArray {
-        val modelID = R.raw.har
+        val modelID = R.raw.har_gcn
         return context.resources.openRawResource(modelID).readBytes()
     }
 
