@@ -2,13 +2,13 @@ package com.example.android
 
 import ai.onnxruntime.OnnxTensor
 import ai.onnxruntime.OrtEnvironment
+import ai.onnxruntime.OrtSession
 import android.content.Context
 import android.graphics.Bitmap
 import android.media.MediaCodec
 import android.media.MediaCodecInfo
 import android.media.MediaFormat
 import android.media.MediaMuxer
-import android.util.Log
 import com.google.android.gms.tflite.client.TfLiteInitializationOptions
 import org.opencv.core.Mat
 import org.opencv.core.MatOfPoint2f
@@ -20,24 +20,20 @@ import java.nio.FloatBuffer
 import kotlin.math.abs
 import org.opencv.core.Point as CVPoint
 
-class KeypointType<T>(var value: MutableList<MutableList<T>>)
-class KeypointListType<T>(val value: MutableList<KeypointType<T>>)
+class KeypointListType(val value: MutableList<MutableList<FloatArray>>)
 
-class BboxType<T>(val value: MutableList<T>)
-class BboxListType<T>(val value: MutableList<BboxType<T>>)
+class BboxListType(val value: MutableList<FloatArray>)
 
 data class PfdResult(
-    var keypoint: KeypointListType<Float> = KeypointListType(mutableListOf()),
-    var bbox: BboxListType<FloatArray> = BboxListType(mutableListOf())
+    var keypoint: KeypointListType = KeypointListType(mutableListOf()),
+    var bbox: BboxListType = BboxListType(mutableListOf()),
+    var size: Int = 0
 ) {}
 
 class PFDHelper(val context: Context) {
     private var commonUtils: CommonUtils
     private val DIM_BATCH_SIZE = 1
     private val DIM_PIXEL_SIZE = 3
-    private val IMAGE_SIZE_X = 512
-    private val IMAGE_SIZE_Y = 512
-    private val targetImgSize = 512
 
     init {
         val options = TfLiteInitializationOptions.builder()
@@ -61,26 +57,28 @@ class PFDHelper(val context: Context) {
     }
 
     // Read ort model into a ByteArray, run in background
-    private fun readModel(): ByteArray {
-
+    fun readPfdModel(): ByteArray {
         val modelID = R.raw.keypoint_rcnn_op11_quant
         return context.resources.openRawResource(modelID).readBytes()
     }
 
     fun preProcess(bitmap: Bitmap): FloatBuffer {
+        val imgWidth = bitmap.width
+        val imgHeight = bitmap.height
+
         val imgData = FloatBuffer.allocate(
             DIM_BATCH_SIZE
                     * DIM_PIXEL_SIZE
-                    * IMAGE_SIZE_X
-                    * IMAGE_SIZE_Y
+                    * imgWidth
+                    * imgHeight
         )
         imgData.rewind()
-        val stride = IMAGE_SIZE_X * IMAGE_SIZE_Y
+        val stride = imgWidth * imgHeight
         val bmpData = IntArray(stride)
-        bitmap.getPixels(bmpData, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
-        for (i in 0..IMAGE_SIZE_X - 1) {
-            for (j in 0..IMAGE_SIZE_Y - 1) {
-                val idx = IMAGE_SIZE_Y * i + j
+        bitmap.getPixels(bmpData, 0, imgWidth, 0, 0, imgWidth, imgHeight)
+        for (i in 0..imgWidth - 1) {
+            for (j in 0..imgHeight - 1) {
+                val idx = imgHeight * i + j
                 val pixelValue = bmpData[idx]
                 imgData.put(idx, ((pixelValue shr 16 and 0xFF) / 255f))
                 imgData.put(idx + stride, ((pixelValue shr 8 and 0xFF) / 255f))
@@ -93,28 +91,26 @@ class PFDHelper(val context: Context) {
     }
 
 
-    fun onnxInference(bitmap: Bitmap): PfdResult {
+    fun onnxInference(bitmap: Bitmap, ortSession: OrtSession, env: OrtEnvironment): PfdResult {
         // output object
         val sortedOutput = mutableMapOf<String, Any>()
 
-        if (bitmap != null) {
-            var ortEnv = OrtEnvironment.getEnvironment()
-            var ortSession = ortEnv.createSession(readModel())
-
+//        if (bitmap.isRecycled) {
             val inputNameIterator = ortSession.inputNames!!.iterator()
             val inputName0: String = inputNameIterator.next()
             val inputName1: String = inputNameIterator.next()
-            val shape = longArrayOf(3, 512, 512)
-            val env = OrtEnvironment.getEnvironment()
+            val shape = longArrayOf(3, bitmap.height.toLong(), bitmap.width.toLong())
 
             // resize bitmap
-            val resizedBitmap: Bitmap = commonUtils.resizeBitmap(bitmap, targetImgSize)
+//            val resizedBitmap: Bitmap = commonUtils.resizeBitmap(bitmap, targetImgSize)
 
             env.use {
-                val tensor0 = OnnxTensor.createTensor(env, preProcess(resizedBitmap), shape)
+                val tensor0 = OnnxTensor.createTensor(env, preProcess(bitmap), shape)
 
                 // TODO: send an empty bitmap to avoid extra computation
-                val tensor1 = OnnxTensor.createTensor(env, preProcess(resizedBitmap), shape)
+                val tensor1 = OnnxTensor.createTensor(env, preProcess(bitmap), shape)
+
+                val temp = tensor0.byteBuffer[0]
 
                 val inputMap = mutableMapOf<String, OnnxTensor>()
                 inputMap[inputName0] = tensor0
@@ -123,7 +119,6 @@ class PFDHelper(val context: Context) {
                 val output = ortSession?.run(inputMap)
 
                 val outputNames = ortSession.outputNames.toList()
-                ortSession.outputInfo
 
                 /*
                 * Output format from the model is as follows
@@ -141,40 +136,44 @@ class PFDHelper(val context: Context) {
                     if (idx == 4) break
                 }
             }
+//        }
+
+        return if (sortedOutput.isNotEmpty())
+            preprocessOutput(sortedOutput)
+        else {
+            return PfdResult()
         }
-        return preprocessOutput(sortedOutput)
     }
 
-    private fun preprocessOutput(modelOutput:MutableMap<String, Any>): PfdResult {
+    private fun preprocessOutput(modelOutput: MutableMap<String, Any>): PfdResult {
         // check if scores for both bbox and keypoints
         // filter them by score > 0.8
         val processedOutput = PfdResult()
 
-        // filter keypoints
-        val scores = modelOutput["keypoints_scores_1"] as FloatArray
-        val keypoints = modelOutput["keypoints_1"] as List<FloatArray>
+        // filter keypoints and bboxes
+        val scores = modelOutput["scores_1"] as FloatArray
+        val bboxes = modelOutput["boxes_1"] as Array<FloatArray>
+        val keypoints = modelOutput["keypoints_1"] as Array<Array<FloatArray>>
+        var size = 0
 
         for (idx in scores.indices) {
-            if(scores[idx] >= 0.8) {
-                // add keypoints to processed output
-                val keypoint: KeypointType<Float> = keypoints[idx] as KeypointType<Float>
-                processedOutput.keypoint.value.add(keypoint)
-            }
-        }
-
-        // filter bboxes
-        val bboxScores = modelOutput["scores_1"] as FloatArray
-        val bboxes = modelOutput["boxes_1"] as List<FloatArray>
-
-        for (idx in bboxScores.indices) {
-            if(bboxScores[idx] >= 0.8) {
+            if (scores[idx] >= 0.8) {
                 // add boxes to processed output
-                val bbox: BboxType<FloatArray> = bboxes[idx] as BboxType<FloatArray>
+                val bbox: FloatArray = bboxes[idx]
                 processedOutput.bbox.value.add(bbox)
+
+                // add keypoints to processed output
+                val keypoint: MutableList<FloatArray> = keypoints[idx].toMutableList()
+                processedOutput.keypoint.value.add(keypoint)
+
+                // size
+                size++
             }
         }
 
-        return  processedOutput
+        processedOutput.size = size
+
+        return processedOutput
     }
 
 //    @ExperimentalGetImage
@@ -299,7 +298,7 @@ class PFDHelper(val context: Context) {
         mediaMuxer.release()
     }
 
-    fun perspectiveTransformation(imageBitmap: Bitmap, keyPoints: KeypointType<Float>): Bitmap {
+    fun perspectiveTransformation(imageBitmap: Bitmap, keyPoints: MutableList<FloatArray>): Bitmap {
         val imgMat = commonUtils.bitmapToMat(imageBitmap)
 
         // Convert points array to OpenCV Point array
@@ -323,10 +322,10 @@ class PFDHelper(val context: Context) {
 //            }
 //        }
 
-        var topLeft = keyPoints.value[0]
-        var topRight = keyPoints.value[1]
-        var bottomLeft = keyPoints.value[3]
-        var bottomRight = keyPoints.value[2]
+        var topLeft = keyPoints[0]
+        var topRight = keyPoints[1]
+        var bottomLeft = keyPoints[3]
+        var bottomRight = keyPoints[2]
 
         val imgWidth = abs(topLeft[0] - topRight[0])
         val imgHeight = abs(topLeft[1] - bottomLeft[1])
@@ -363,7 +362,7 @@ class PFDHelper(val context: Context) {
 
     fun perspectiveTransformation(
         imageBitmapList: List<Bitmap>,
-        keyPoint: KeypointType<Float>
+        keyPoint: MutableList<FloatArray>
     ): List<Bitmap> {
 
         var transformedList: List<Bitmap> = mutableListOf<Bitmap>()

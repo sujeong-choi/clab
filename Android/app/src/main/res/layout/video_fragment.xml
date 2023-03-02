@@ -5,46 +5,47 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     tools:context=".VideoFragment">
+
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:paddingLeft="16dp"
-        android:paddingRight="16dp"
         android:orientation="horizontal"
-        >
-    <Button
-        android:id="@+id/liveButton"
-        android:layout_width="120dp"
-        android:layout_height="50dp"
-        android:text="@string/live"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/timelapseButton"
-        app:layout_constraintVertical_bias="0.358" />
+        android:paddingLeft="16dp"
+        android:paddingRight="16dp">
 
-    <Button
-        android:id="@+id/selectButton"
-        android:layout_width="120dp"
-        android:layout_height="50dp"
-        android:layout_marginStart="10dp"
-        android:text="@string/upload"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toStartOf="@+id/liveButton"
-        app:layout_constraintHorizontal_bias="0.036"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/timelapseButton"
-        app:layout_constraintVertical_bias="0.358" />
+        <Button
+            android:id="@+id/liveButton"
+            android:layout_width="120dp"
+            android:layout_height="50dp"
+            android:text="@string/live"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toBottomOf="@+id/timelapseButton"
+            app:layout_constraintVertical_bias="0.358" />
 
-    <Button
-        android:id="@+id/timelapseButton"
-        android:layout_width="120dp"
-        android:layout_height="50dp"
-        android:layout_marginStart="10dp"
-        android:text="@string/timelapse"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintHorizontal_bias="0.498"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/previewView" />
+        <Button
+            android:id="@+id/selectButton"
+            android:layout_width="120dp"
+            android:layout_height="50dp"
+            android:layout_marginStart="10dp"
+            android:text="@string/upload"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toStartOf="@+id/liveButton"
+            app:layout_constraintHorizontal_bias="0.036"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@+id/timelapseButton"
+            app:layout_constraintVertical_bias="0.358" />
+
+        <Button
+            android:id="@+id/timelapseButton"
+            android:layout_width="120dp"
+            android:layout_height="50dp"
+            android:layout_marginStart="10dp"
+            android:text="@string/timelapse"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintHorizontal_bias="0.498"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@+id/previewView" />
     </LinearLayout>
 
     <FrameLayout
@@ -54,58 +55,83 @@
         android:layout_marginTop="30dp"
         tools:context=".VideoFragment">
 
+        <FrameLayout android:id="@+id/surfaceFrame"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:layout_marginTop="30dp"
+            tools:context=".VideoFragment">
+        </FrameLayout>
+
         <androidx.camera.view.PreviewView
             android:id="@+id/previewView"
             android:layout_width="fill_parent"
             android:layout_height="fill_parent"
             android:layout_marginTop="30dp"
+            android:visibility="gone"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintHorizontal_bias="0.491"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toTopOf="parent" >
-        </androidx.camera.view.PreviewView>
+            app:layout_constraintTop_toTopOf="parent" />
 
         <com.example.android.RectOverlay
             android:id="@+id/rectOverlay"
-            android:layout_marginTop="30dp"
             android:layout_width="fill_parent"
             android:layout_height="fill_parent"
-            />
+            android:layout_marginTop="30dp" />
 
         <ImageView
             android:id="@+id/previewViewSmall"
             android:layout_width="150dp"
             android:layout_height="250dp"
             android:layout_marginTop="30dp"
+            android:contentDescription="Show Painting Preview"
             android:visibility="gone"
             app:layout_constraintEnd_toEndOf="parent"
             app:layout_constraintHorizontal_bias="0.491"
             app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toTopOf="parent"
-            android:contentDescription="Show Painting Preview" />
+            app:layout_constraintTop_toTopOf="parent" />
 
         <TextView
             android:id="@+id/recordText"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_gravity="end"
             android:layout_marginTop="30dp"
-            android:text="Recording"
+            android:alpha="0.8"
             android:background="#80000000"
+            android:padding="16dp"
+            android:text="@string/recording_label"
             android:textColor="#ffffff"
             android:textSize="15sp"
             android:textStyle="bold"
-            android:padding="16dp"
-            android:visibility="gone"
-            android:layout_gravity="end"
-            android:alpha="0.8" />
+            android:visibility="gone" />
 
-        <Button
-            android:id="@+id/recordButton"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="30dp"
-            android:layout_gravity="bottom|center_horizontal"
-            android:text="Record" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="horizontal"
+            android:gravity="center"
+            android:paddingLeft="16dp"
+            android:paddingRight="16dp">
+
+            <Button
+                android:id="@+id/detectFrameButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="bottom|center_horizontal"
+                android:layout_marginBottom="30dp"
+                android:text="@string/detect_label" />
+
+            <Button
+                android:id="@+id/recordButton"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="bottom|center_horizontal"
+                android:layout_marginBottom="30dp"
+                android:layout_marginStart="50dp"
+                android:text="@string/record_label" />
+        </LinearLayout>
 
         <VideoView
             android:id="@+id/videoView"
@@ -131,6 +157,14 @@
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent"
             tools:ignore="RtlHardcoded" />
+
+        <ProgressBar
+            android:id="@+id/progressBar"
+            style="?android:attr/progressBarStyleLarge"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:visibility="gone"
+            android:layout_gravity="center" />
     </FrameLayout>
 
 </RelativeLayout>

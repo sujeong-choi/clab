@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
-    package="com.example.android">
+        package="com.example.android">
 
     <uses-feature android:name="android.hardware.camera.any" />
     <uses-permission android:name="android.permission.CAMERA" />
@@ -18,14 +18,20 @@
         android:largeHeap="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
-        android:icon="@mipmap/ic_launcher"
+        android:icon="@mipmap/ic_logo"
         android:label="@string/app_name"
-        android:roundIcon="@mipmap/ic_launcher_round"
+        android:roundIcon="@mipmap/ic_logo"
         android:supportsRtl="true"
         android:theme="@style/Theme.Android"
         tools:targetApi="33">
         <meta-data android:name="com.google.android.gms.version"
             android:value="@integer/google_play_services_version" />
+        <meta-data android:name="binaryGraphName" android:value="pose_world_gpu.binarypb"/>
+        <meta-data android:name="inputVideoStreamName" android:value="input_video"/>
+        <meta-data android:name="outputVideoStreamName" android:value="input_video"/>
+        <meta-data android:name="outputLandmarksStreamName" android:value="pose_landmarks"/>
+        <meta-data android:name="outputLandmarksStreamNamedWorld" android:value="pose_world_landmarks"/>
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
