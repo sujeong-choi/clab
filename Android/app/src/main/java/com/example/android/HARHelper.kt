@@ -4,7 +4,6 @@ import ai.onnxruntime.OnnxTensor
 import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
 import android.content.Context
-import com.example.android.ml.HarModel
 import com.google.mediapipe.formats.proto.LandmarkProto
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.pose.PoseDetection
@@ -30,7 +29,6 @@ import java.util.concurrent.Executors
 class HARHelper(val context: Context) {
     private lateinit var poseDetector: PoseDetector
     private val classificationExecutor: Executor = Executors.newSingleThreadExecutor()
-    private lateinit var harModel: HarModel
 
     init {
         // Pose detector
@@ -140,7 +138,6 @@ class HARHelper(val context: Context) {
 
     fun destroyModel() {
         // Releases model resources if no longer used.
-        harModel.close()
     }
 
 }
