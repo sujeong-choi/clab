@@ -9,7 +9,9 @@ import android.media.MediaCodec
 import android.media.MediaCodecInfo
 import android.media.MediaFormat
 import android.media.MediaMuxer
+import android.util.Log
 import com.google.android.gms.tflite.client.TfLiteInitializationOptions
+import com.google.mediapipe.formats.proto.LandmarkProto
 import org.opencv.core.Mat
 import org.opencv.core.MatOfPoint2f
 import org.opencv.core.Size
@@ -17,7 +19,9 @@ import org.opencv.imgproc.Imgproc
 import org.tensorflow.lite.task.gms.vision.TfLiteVision
 import java.nio.ByteBuffer
 import java.nio.FloatBuffer
+import java.nio.IntBuffer
 import kotlin.math.abs
+import kotlin.math.absoluteValue
 import org.opencv.core.Point as CVPoint
 
 class KeypointListType(val value: MutableList<MutableList<FloatArray>>)
@@ -36,22 +40,6 @@ class PFDHelper(val context: Context) {
     private val DIM_PIXEL_SIZE = 3
 
     init {
-        val options = TfLiteInitializationOptions.builder()
-            .setEnableGpuDelegateSupport(true)
-            .build()
-
-        TfLiteVision.initialize(context, options).addOnSuccessListener {
-//            objectDetectorListener.onInitialized()
-        }.addOnFailureListener {
-            // Called if the GPU Delegate is not supported on the device
-            TfLiteVision.initialize(context).addOnSuccessListener {
-//                objectDetectorListener.onInitialized()
-            }.addOnFailureListener {
-//                objectDetectorListener.onError("TfLiteVision failed to initialize: "
-//                        + it.message)
-            }
-        }
-
         // init global objects
         commonUtils = CommonUtils(context)
     }
@@ -91,52 +79,47 @@ class PFDHelper(val context: Context) {
     }
 
 
-    fun onnxInference(bitmap: Bitmap, ortSession: OrtSession, env: OrtEnvironment): PfdResult {
+    fun pfdInference(bitmap: Bitmap, ortSession: OrtSession, env: OrtEnvironment): PfdResult {
         // output object
         val sortedOutput = mutableMapOf<String, Any>()
 
-//        if (bitmap.isRecycled) {
-            val inputNameIterator = ortSession.inputNames!!.iterator()
-            val inputName0: String = inputNameIterator.next()
-            val inputName1: String = inputNameIterator.next()
-            val shape = longArrayOf(3, bitmap.height.toLong(), bitmap.width.toLong())
+        val inputNameIterator = ortSession.inputNames!!.iterator()
+        val inputName0: String = inputNameIterator.next()
+        val inputName1: String = inputNameIterator.next()
+        val shape = longArrayOf(3, bitmap.height.toLong(), bitmap.width.toLong())
 
-            // resize bitmap
-//            val resizedBitmap: Bitmap = commonUtils.resizeBitmap(bitmap, targetImgSize)
+        env.use {
+            val tensor0 = OnnxTensor.createTensor(env, preProcess(bitmap), shape)
 
-            env.use {
-                val tensor0 = OnnxTensor.createTensor(env, preProcess(bitmap), shape)
+            // send an empty bitmap to avoid extra computation
+            val bufferSize = shape.reduce(Long::times).toInt()
+            val buffer = FloatBuffer.allocate(bufferSize)
+            val tensor1 = OnnxTensor.createTensor(env, buffer, shape)
+            val inputMap = mutableMapOf<String, OnnxTensor>()
 
-                // TODO: send an empty bitmap to avoid extra computation
-                val tensor1 = OnnxTensor.createTensor(env, preProcess(bitmap), shape)
+            inputMap[inputName0] = tensor0
+            inputMap[inputName1] = tensor1
 
-                val temp = tensor0.byteBuffer[0]
+            val output = ortSession?.run(inputMap)
 
-                val inputMap = mutableMapOf<String, OnnxTensor>()
-                inputMap[inputName0] = tensor0
-                inputMap[inputName1] = tensor1
+            val outputNames = ortSession.outputNames.toList()
 
-                val output = ortSession?.run(inputMap)
+            /*
+            * Output format from the model is as follows
+            * boxes_1: float coordinates containing coordinates of bounding boxes in the format [[top_left_x, top_left_y, bottom_right_x, bottom_right_y]]
+            * labels_1: one hot encoding of labels
+            * scores_1: scores of each bounding box
+            * keypoints_1: list of 4 keypoints for each bounding box, each keypoint contains [x, y, a] values
+            * keypoint_scores_1: scores of each keypoints
+            * */
+            for (idx in outputNames.indices) {
+                val name = outputNames[idx]
+                sortedOutput[name] = output?.get(idx)?.value as Any
 
-                val outputNames = ortSession.outputNames.toList()
-
-                /*
-                * Output format from the model is as follows
-                * boxes_1: float coordinates containing coordinates of bounding boxes in the format [[top_left_x, top_left_y, bottom_right_x, bottom_right_y]]
-                * labels_1: one hot encoding of labels
-                * scores_1: scores of each bounding box
-                * keypoints_1: list of 4 keypoints for each bounding box, each keypoint contains [x, y, a] values
-                * keypoint_scores_1: scores of each keypoints
-                * */
-                for (idx in outputNames.indices) {
-                    val name = outputNames[idx]
-                    sortedOutput[name] = output?.get(idx)?.value as Any
-
-                    // break on the 5th item since the second image is a dummy image
-                    if (idx == 4) break
-                }
+                // break on the 5th item since the second image is a dummy image
+                if (idx == 4) break
             }
-//        }
+        }
 
         return if (sortedOutput.isNotEmpty())
             preprocessOutput(sortedOutput)
@@ -176,68 +159,60 @@ class PFDHelper(val context: Context) {
         return processedOutput
     }
 
-//    @ExperimentalGetImage
-//    fun pfdInference(bitmap: Bitmap): Array<FloatArray> {
-//        // declare tensorflow model
-//        keypointModel = KeypointModel.newInstance(context)
-//
-//        val tensorImage = TensorImage(DataType.FLOAT32)
-//        tensorImage.load(bitmap)
-//
-//        val imageProcessor: ImageProcessor = ImageProcessor.Builder()
-//            .add(
-//                ResizeOp(
-//                    targetImgSize,
-//                    targetImgSize,
-//                    ResizeOp.ResizeMethod.BILINEAR
-//                )
-//            ) //.add(new Rot90Op(numRotation))
-//            .build()
-//
-//        val processedImg = imageProcessor.process(tensorImage)
-//
-//        // Creates inputs for reference.
-//        val inputFeature0 =
-//            TensorBuffer.createFixedSize(
-//                intArrayOf(1, targetImgSize, targetImgSize, 3),
-//                DataType.FLOAT32
-//            )
-//        inputFeature0.loadBuffer(processedImg.buffer)
-//
-//        // Runs model inference and gets result.
-//        val outputs = keypointModel.process(inputFeature0)
-//        val outputFeature0 = outputs.outputFeature0AsTensorBuffer
-//
-//        // Create a TensorBuffer for the input tensor
-//        val outputBuffer = TensorBuffer.createFixedSize(intArrayOf(1, 10, 10, 8), DataType.FLOAT32)
-//        outputBuffer.loadBuffer(outputFeature0.buffer)
-//
-//        // loop through the list of keypoints and draw a circle at each position on the canvas
-//        val keypoints =
-//            outputBuffer.floatArray // assuming tensorBuffer contains the list of keypoints
-//
-//        val x = 100
-//        val y = 4
-//        val z = 2
-//        val imgSize = 512
-//
-//        val reshapedArray = Array(x) {
-//            Array(y) {
-//                FloatArray(z)
-//            }
-//        }
-//
-//        var i = 0
-//        for (b in 0 until x) {
-//            for (h in 0 until y) {
-//                for (w in 0 until z) {
-//                    reshapedArray[b][h][w] = keypoints[i++] * imgSize
-//                }
-//            }
-//        }
-//
-//        return reshapedArray[0]
-//    }
+    fun isHandInFrame(
+        inputFrame: Bitmap,
+        bbox: FloatArray,
+        landMarks: LandmarkProto.NormalizedLandmarkList?
+    ): Boolean {
+        if (landMarks != null) {
+            val filteredLandmarks = landMarks.landmarkList.toList().slice(13..22)
+
+            val frameWidth = inputFrame.width
+            val frameHeight = inputFrame.height
+
+            // only use x and y coordinates from filteredLandmarks list
+            // convert coordinates to the correct aspect ratio
+            val poseLandmarks: MutableList<FloatArray> = mutableListOf()
+
+            for (landmark in filteredLandmarks) {
+                if (landmark.visibility < 0.75)
+                    poseLandmarks.add(
+                        floatArrayOf(
+                            0f,
+                            0f
+                        )
+                    )
+                else if (landmark.visibility >= 0.75)
+                    poseLandmarks.add(
+                        floatArrayOf(
+                            landmark.x * frameWidth,
+                            landmark.y * frameHeight
+                        )
+                    )
+            }
+
+            for (pose in poseLandmarks) {
+                // check if point is inside or outside the bbox
+                if (isPointInsideRectangle(pose, bbox)) {
+                    return true
+                }
+            }
+            return false
+        }
+        return false
+    }
+
+    private fun isPointInsideRectangle(point: FloatArray, bbox: FloatArray): Boolean {
+        val topLeftX = bbox[0]
+        val topLeftY = bbox[1]
+        val bottomRightX = bbox[2]
+        val bottomRightY = bbox[3]
+
+        val pointX = point[0]
+        val pointY = point[1]
+
+        return pointX in topLeftX..bottomRightX && pointY in topLeftY..bottomRightY
+    }
 
     fun saveVideoFromBitmaps(
         frames: List<Bitmap>,
@@ -301,27 +276,6 @@ class PFDHelper(val context: Context) {
     fun perspectiveTransformation(imageBitmap: Bitmap, keyPoints: MutableList<FloatArray>): Bitmap {
         val imgMat = commonUtils.bitmapToMat(imageBitmap)
 
-        // Convert points array to OpenCV Point array
-        // TODO: uncomment if keypoint isn't a test point
-//        var topLeft = floatArrayOf(0f, 0f)
-//        var topRight = floatArrayOf(0f, 0f)
-//        var bottomLeft = floatArrayOf(0f, 0f)
-//        var bottomRight = floatArrayOf(0f, 0f)
-//
-//        val bboxCenter: LocalUtils.BboxCenter = localUtils.calculateBboxCenter(keyPoints)
-//
-//        for (kp in keyPoints) {
-//            if (kp[0] < bboxCenter.centerX && kp[1] < bboxCenter.centerY) {
-//                topLeft = kp
-//            } else if (kp[0] > bboxCenter.centerX && kp[1] > bboxCenter.centerY) {
-//                bottomRight = kp
-//            } else if (kp[0] < bboxCenter.centerX && kp[1] > bboxCenter.centerY) {
-//                topRight = kp
-//            } else if (kp[0] > bboxCenter.centerX && kp[1] < bboxCenter.centerY) {
-//                bottomLeft = kp
-//            }
-//        }
-
         val topLeft = keyPoints[0]
         val topRight = keyPoints[3]
         val bottomLeft = keyPoints[1]
@@ -332,10 +286,10 @@ class PFDHelper(val context: Context) {
 
         // srcPoints => (top_left, top_right, bottom_left, bottom_right)
         val srcPoints = arrayOf(
-            CVPoint(topRight[0].toDouble(), topRight[1].toDouble()),
             CVPoint(topLeft[0].toDouble(), topLeft[1].toDouble()),
-            CVPoint(bottomLeft[0].toDouble(), bottomLeft[1].toDouble()),
-            CVPoint(bottomRight[0].toDouble(), bottomRight[1].toDouble())
+            CVPoint(topRight[0].toDouble(), topRight[1].toDouble()),
+            CVPoint(bottomRight[0].toDouble(), bottomRight[1].toDouble()),
+            CVPoint(bottomLeft[0].toDouble(), bottomLeft[1].toDouble())
         )
         val dstPoints = arrayOf(
             CVPoint(0.0, 0.0),

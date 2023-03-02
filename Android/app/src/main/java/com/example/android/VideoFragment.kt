@@ -33,12 +33,16 @@ import com.google.mediapipe.components.CameraHelper.OnCameraStartedListener
 import com.google.mediapipe.components.CameraXPreviewHelper
 import com.google.mediapipe.components.ExternalTextureConverter
 import com.google.mediapipe.components.FrameProcessor
+import com.google.mediapipe.formats.proto.LandmarkProto
 import com.google.mediapipe.formats.proto.LandmarkProto.NormalizedLandmarkList
 import com.google.mediapipe.framework.AndroidAssetUtil
 import com.google.mediapipe.framework.Packet
 import com.google.mediapipe.framework.PacketGetter
 import com.google.mediapipe.glutil.EglManager
 import com.google.protobuf.InvalidProtocolBufferException
+import org.jetbrains.kotlinx.multik.api.d3array
+import org.jetbrains.kotlinx.multik.api.mk
+import org.jetbrains.kotlinx.multik.ndarray.data.set
 import org.opencv.android.OpenCVLoader
 import java.io.File
 import java.util.concurrent.Executor
@@ -60,7 +64,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
     private lateinit var recordText: TextView
     private lateinit var rectOverlay: RectOverlay
     private lateinit var mediaController: MediaController
-    private lateinit var spinner: ProgressBar
+    private lateinit var loadingView: FrameLayout
     private lateinit var previewDisplayView: SurfaceView
     private lateinit var previewFrameTexture: SurfaceTexture
 
@@ -70,6 +74,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
     private lateinit var pfdHelper: PFDHelper
     private lateinit var ortEnv: OrtEnvironment
     private lateinit var pfdSession: OrtSession
+    private lateinit var harSession: OrtSession
 
     // camera variables
     private lateinit var cameraProviderFuture: ListenableFuture<ProcessCameraProvider>
@@ -89,8 +94,13 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
     private var isRecording: Boolean = false
     private var isKeypointSelected: Boolean = false
     private var isCameraFacingFront: Boolean = false
+    private var enableHarInference: Boolean = false
     private var globalPfdResult: PfdResult = PfdResult()
+    private var globalLandmark: NormalizedLandmarkList? = null
+    private var globalBitmapStore: MutableList<Bitmap> = mutableListOf()
     private var previewSize: Size? = null
+    private var frameCnt = 1
+    private var framesSkeleton = mk.d3array(144, 25, 3) { 0.0f }
     private val REQUIRED_PERMISSIONS: Array<String> =
         arrayOf(
             "android.permission.CAMERA",
@@ -150,12 +160,15 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
         detectButton = binding.detectFrameButton
         recordText = binding.recordText
         rectOverlay = binding.rectOverlay
-        spinner = binding.progressBar
+        loadingView = binding.loadingContainer
 
         // init helper and util classes
         pfdHelper = PFDHelper(requireContext())
         harHelper = HARHelper(requireContext())
         commonUtils = CommonUtils(requireContext())
+
+        // setup fragment click listeners
+        setClickListeners()
 
         // init mediapipe
         initMediaPipe()
@@ -169,8 +182,6 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
         mediaController.setAnchorView(videoView)
         videoView.setMediaController(mediaController)
         timeLapseView.setMediaController(mediaController)
-
-        setClickListeners()
 
         // create output video file
 //        videoFile = createVideoFile()
@@ -206,29 +217,61 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                 .setFlipY(true)
 
             processor.addPacketCallback(
+                applicationInfo.metaData.getString("outputLandmarksStreamNameWorld")
+            ) { packet: Packet ->
+                val landmarksRaw: ByteArray = PacketGetter.getProtoBytes(packet)
+                val poseLandmarks: LandmarkProto.LandmarkList =
+                    LandmarkProto.LandmarkList.parseFrom(landmarksRaw)
+
+                if (enableHarInference) {
+                    if (frameCnt < 60) {//Collect Skeleton data for 60 frames or 4 seconds(4 seconds not yet implemented).
+                        framesSkeleton[frameCnt] =
+                            harHelper.saveSkeletonData(poseLandmarks) //save landmarks in array shape (144,25,3)
+                        frameCnt++
+                    } else {
+                        commonUtils.getFrameBitmap(previewDisplayView) { bitmap: Bitmap? ->
+                            if (!pfdHelper.isHandInFrame(
+                                    bitmap!!,
+                                    globalPfdResult.bbox.value[0],
+                                    globalLandmark
+                                )
+                            ) {
+                                // update preview screen if hand isn't in frame
+                                drawPreview(globalPfdResult)
+
+                                // add bitmap to global
+//                                globalBitmapStore.plus(bitmap.copy(bitmap.config, true))
+                            }
+                        }
+
+
+                        // if hand isn't inside
+                        framesSkeleton[frameCnt] = harHelper.saveSkeletonData(poseLandmarks)
+
+                        val input = harHelper.convertSkeletonData(framesSkeleton)
+
+                        // send to model
+                        harHelper.harInference(input, harSession, ortEnv)
+
+                        framesSkeleton =
+                            mk.d3array(144, 25, 3) { 0.0f } // reinitialize landmarks array
+                        frameCnt = 1
+
+                    }
+                }
+            }
+
+            processor.addPacketCallback(
                 applicationInfo.metaData.getString("outputLandmarksStreamName")
             ) { packet: Packet ->
-                Log.v(TAG, "Received multi-hand landmarks packet.")
-                Log.v(TAG, packet.toString())
                 val landmarksRaw = PacketGetter.getProtoBytes(packet)
                 try {
                     val landmarks = NormalizedLandmarkList.parseFrom(landmarksRaw)
-                    if (landmarks == null) {
-//                        Log.v(
-//                            TAG,
-//                            "[TS:" + packet.timestamp + "] No iris landmarks."
-//                        )
-                        return@addPacketCallback
+
+                    if (landmarks != null) {
+                        globalLandmark = landmarks
                     }
-                    // Note: If eye_presence is false, these landmarks are useless.
-//                    Log.v(
-//                        TAG,
-//                        "[TS:"
-//                                + packet.timestamp
-//                                + "] #Landmarks for iris: "
-//                                + landmarks.landmarkCount
-//                    )
-//                    Log.v(TAG, landmarks.toString())
+
                 } catch (e: InvalidProtocolBufferException) {
                     Log.e(TAG, "Couldn't Exception received - $e")
                     return@addPacketCallback
@@ -255,6 +298,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
             startCamera()
         }
     }
+
 
     private fun setupDraggablePreview() {
         //set bg color for previewViewSmall
@@ -377,39 +421,40 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
             isRecording = !isRecording
 
             if (isRecording) {
-                recordText.visibility = View.VISIBLE
-                recordButton.text = "STOP"
-                previewViewSmall.visibility = View.VISIBLE
-
                 // start video recording
                 drawPreview(globalPfdResult)
+
+                // start HAR inference
+                enableHarInference = true
 
             } else {
                 recordText.visibility = View.GONE
                 recordButton.text = "RECORD"
                 previewViewSmall.visibility = View.GONE
 
-                // stop video recording
+                // start HAR inference
+                enableHarInference = false
+
+                // save timelapse
+//                pfdHelper.saveVideoFromBitmaps(globalBitmapStore, "/", globalBitmapStore[0].width, globalBitmapStore[0].width, 30)
 
             }
         }
 
         detectButton.setOnClickListener {
-//            val frame = commonUtils.surfaceTextureToBitmap(previewSize!!.width, previewSize!!.height)
-
             try {
                 commonUtils.getFrameBitmap(previewDisplayView) { bitmap: Bitmap? ->
                     requireActivity().runOnUiThread(java.lang.Runnable {
                         // show loading spinner
-                        spinner.visibility = View.VISIBLE
+                        loadingView.visibility = View.VISIBLE
                     })
 
                     val pfdResult: PfdResult? =
-                        bitmap?.let { it1 -> pfdHelper.onnxInference(it1, pfdSession, ortEnv) }
+                        bitmap?.let { it1 -> pfdHelper.pfdInference(it1, pfdSession, ortEnv) }
 
                     requireActivity().runOnUiThread(java.lang.Runnable {
                         // hide loading spinner
-                        spinner.visibility = View.GONE
+                        loadingView.visibility = View.GONE
                     })
 
                     // for memory optimization
@@ -422,10 +467,11 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
 
                         // draw keyPoints on top of previewView
                         drawKeypoints(globalPfdResult)
+
                     } else {
                         Toast.makeText(
                             requireContext(),
-                            "Painting not detected ERR01!",
+                            "Painting not detected!",
                             Toast.LENGTH_LONG
                         )
                             .show()
@@ -434,7 +480,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
 
             } catch (e: Exception) {
                 // hide loading spinner
-                spinner.visibility = View.GONE
+                loadingView.visibility = View.GONE
                 e.message?.let { it1 -> Log.v("Error", it1) }
             }
         }
@@ -483,10 +529,11 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
 
         // setup onnx model
         ortEnv = OrtEnvironment.getEnvironment()
-        val options = OrtSession.SessionOptions()
-        options.addNnapi()
-        options.setExecutionMode(OrtSession.SessionOptions.ExecutionMode.PARALLEL)
-        pfdSession = ortEnv.createSession(pfdHelper.readPfdModel(), options)
+//        val options = OrtSession.SessionOptions()
+//        options.addNnapi()
+//        options.setExecutionMode(OrtSession.SessionOptions.ExecutionMode.PARALLEL)
+        pfdSession = ortEnv.createSession(pfdHelper.readPfdModel())
+        harSession = ortEnv.createSession(harHelper.readHarModel())
 
         previewDisplayView
             .holder
@@ -555,7 +602,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
 
             // pass all video frames to pfd inference function
             // fix only pass one frame
-            val output = pfdHelper.onnxInference(videoFrames[0], pfdSession, ortEnv)
+            val output = pfdHelper.pfdInference(videoFrames[0], pfdSession, ortEnv)
 
             // TODO: draw keypoints on top of videoView
 
@@ -591,13 +638,6 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
     }
 
     private fun startCamera() {
-        // Set up the preview use case to display camera preview.
-//        val preview = Preview.Builder().build()
-
-//        val cameraSelector: CameraSelector = CameraSelector.Builder()
-//            .requireLensFacing(CameraSelector.LENS_FACING_BACK).build()
-//        preview.setSurfaceProvider(previewView.surfaceProvider)
-
         cameraHelper = CameraXPreviewHelper()
         cameraHelper.setOnCameraStartedListener(
             OnCameraStartedListener { surfaceTexture ->
@@ -613,88 +653,6 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
             .setExecutor(executor)
             .build()
         videoCapture = VideoCapture.withOutput(recorder)
-
-        // Get the display metrics
-//        val displayMetrics = requireContext().resources.displayMetrics
-
-        // Calculate the screen size in pixels
-//        val scale: Float = resources.displayMetrics.density
-//        val dp30InPixels: Int = (30 * scale + 0.5f).toInt()
-
-//        val screenWidthPx = displayMetrics.widthPixels
-//        val screenHeightPx = displayMetrics.heightPixels
-
-        // Set the target resolution based on the screen size
-//        val targetResolution = Size(screenWidthPx, screenHeightPx)
-
-//        val imageAnalysis: ImageAnalysis =
-//            ImageAnalysis.Builder().setTargetResolution(targetResolution).build()
-//
-//        var lastAnalyzedTimestamp = 0L
-//        val predictionInterval = 15000L
-//
-//        // needs to be created beforehand
-
-//        imageAnalysis.setAnalyzer(executor, ImageAnalysis.Analyzer { imageProxy ->
-//            val currentTimestamp = System.currentTimeMillis()
-////            frame = commonUtils.imageProxyToBitmap(imageProxy)
-//
-//            if (isRecording && currentTimestamp - lastAnalyzedTimestamp >= predictionInterval) {
-//                lastAnalyzedTimestamp = System.currentTimeMillis()
-//
-//                try {
-//                    // initialize skeleton extractor for har
-////                    harHelper.detectInImage(
-////                        InputImage.fromMediaImage(
-////                            imageProxy.image!!,
-////                            imageProxy.imageInfo.rotationDegrees
-////                        )
-////                    )
-//
-////                    harHelper.harInference(InputImage.fromMediaImage(
-////                        imageProxy.image!!,
-////                        imageProxy.imageInfo.rotationDegrees
-////                    ))
-//                } catch (e: Exception) {
-//                    e.message?.let { Log.v("Error", it) }
-//                }
-//
-//
-//                try {
-//                    if (isKeypointSelected) {
-////                        val imgBitmap = commonUtils.imageProxyToBitmap(imageProxy)
-//
-//                        // call draw function to draw pfdResult on previewViewSmall
-////                        drawPreview(globalPfdResult, imgBitmap)
-//                    }
-//                } catch (e: Exception) {
-//                    print("Exception Occurred: ${e.message}")
-//                }
-//            }
-//
-//            // close imageProxy
-//            imageProxy.close()
-//        })
-
-//        val viewPort: ViewPort = previewView.viewPort ?: Rect(0, 0, 720, 1280)
-//        val useCaseGroup = UseCaseGroup.Builder()
-////            .setViewPort(viewPort)
-//            .addUseCase(preview)
-//            .addUseCase(imageAnalysis)
-//            .build()
-//
-//        try {
-//            // Bind use cases to camera
-//            val camera: Camera =
-//                cameraProvider.bindToLifecycle(
-//                    this,
-//                    cameraSelector,
-//                    useCaseGroup,
-////                    videoCapture,
-//                )
-//        } catch (exc: Exception) {
-//            Log.e(TAG, "Use case binding failed", exc)
-//        }
     }
 
     private fun drawPreview(pfdResult: PfdResult) {
@@ -710,24 +668,49 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                     commonUtils.getFrameBitmap(previewDisplayView) { bitmap: Bitmap? ->
                         requireActivity().runOnUiThread(java.lang.Runnable {
                             // show loading spinner
-                            spinner.visibility = View.VISIBLE
+                            loadingView.visibility = View.VISIBLE
                         })
 
                         // perform perspective transformation and show image on previewViewSmall
 
-                        val transformedBitmap = bitmap?.let {
-                            pfdHelper.perspectiveTransformation(
-                                it,
-                                keyPoints[0]
+                        if (!pfdHelper.isHandInFrame(
+                                bitmap!!,
+                                globalPfdResult.bbox.value[0],
+                                globalLandmark
                             )
+                        ) {
+                            requireActivity().runOnUiThread(java.lang.Runnable {
+                                recordText.visibility = View.VISIBLE
+                                recordButton.text = "STOP"
+                                previewViewSmall.visibility = View.VISIBLE
+
+                                val transformedBitmap = bitmap?.let {
+                                    pfdHelper.perspectiveTransformation(
+                                        it,
+                                        keyPoints[0]
+                                    )
+                                }
+
+                                previewViewSmall.setImageBitmap(transformedBitmap)
+                                previewViewSmall.invalidate()
+                                // hide loading spinner
+                                loadingView.visibility = View.GONE
+                            })
+                        } else {
+                            requireActivity().runOnUiThread(java.lang.Runnable {
+                                Toast.makeText(
+                                    requireContext(),
+                                    "Hands in Painting!",
+                                    Toast.LENGTH_LONG
+                                )
+                                    .show()
+
+                                // hide loading spinner
+                                loadingView.visibility = View.GONE
+                            })
                         }
 
-                        requireActivity().runOnUiThread(java.lang.Runnable {
-                            previewViewSmall.setImageBitmap(transformedBitmap)
-                            previewViewSmall.invalidate()
-                            // hide loading spinner
-                            spinner.visibility = View.GONE
-                        })
+
                     }
 
                 }

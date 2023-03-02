@@ -1,13 +1,26 @@
 package com.example.android
 
+import ai.onnxruntime.OnnxTensor
+import ai.onnxruntime.OrtEnvironment
+import ai.onnxruntime.OrtSession
 import android.content.Context
 import com.example.android.ml.HarModel
+import com.google.mediapipe.formats.proto.LandmarkProto
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.pose.PoseDetection
 import com.google.mlkit.vision.pose.PoseDetector
 import com.google.mlkit.vision.pose.defaults.PoseDetectorOptions
-import org.tensorflow.lite.DataType
-import org.tensorflow.lite.support.tensorbuffer.TensorBuffer
+import org.jetbrains.kotlinx.multik.api.d2array
+import org.jetbrains.kotlinx.multik.api.d3array
+import org.jetbrains.kotlinx.multik.api.math.argMax
+import org.jetbrains.kotlinx.multik.api.math.exp
+import org.jetbrains.kotlinx.multik.api.mk
+import org.jetbrains.kotlinx.multik.api.ndarray
+import org.jetbrains.kotlinx.multik.ndarray.data.*
+import org.jetbrains.kotlinx.multik.ndarray.operations.*
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import java.nio.FloatBuffer
 import java.util.concurrent.Executor
 import java.util.concurrent.Executors
 
@@ -43,25 +56,87 @@ class HARHelper(val context: Context) {
             }
     }
 
-    fun harInference(inputImage: InputImage) {
-        harModel = HarModel.newInstance(context)
+    fun readHarModel(): ByteArray {
+        val modelID = R.raw.har
+        return context.resources.openRawResource(modelID).readBytes()
+    }
 
-        // byte buffer
-        val byteBuffer = inputImage.byteBuffer!!
+    fun harInference(inputSkeleton: MultiArray<Float, DN>, ortSession: OrtSession, env: OrtEnvironment): String {
+        val shape = longArrayOf(1, 3, 144, 25, 2)
+        val capacity = shape.reduce{acc, s -> acc * s}.toInt()
 
-        // Creates inputs for reference.
-        val inputFeature0 = TensorBuffer.createFixedSize(intArrayOf(16, 3, 6, 144, 25, 2), DataType.FLOAT32)
-//        inputFeature0.loadBuffer(byteBuffer)
+        val inputNameIterator = ortSession.inputNames!!.iterator()
+        val inputName0: String = inputNameIterator.next()
 
-        // Runs model inference and gets result.
-        val outputs = harModel.process(inputFeature0)
-        val outputFeature0 = outputs.outputFeature0AsTensorBuffer
-        val outputFeature1 = outputs.outputFeature1AsTensorBuffer
+        val bb: ByteBuffer = ByteBuffer.allocateDirect(capacity * 4)
+        bb.order(ByteOrder.nativeOrder())
+        val floatBuffer: FloatBuffer = bb.asFloatBuffer()
+        floatBuffer.put(inputSkeleton.toFloatArray())
+        floatBuffer.position(0)
+
+        env.use {
+            val tensor0 = OnnxTensor.createTensor(env, floatBuffer, shape)
+            val inputMap = mutableMapOf<String, OnnxTensor>()
+            inputMap[inputName0] = tensor0
+
+            val output = ortSession?.run(inputMap)
+
+            val prediction = output?.toList()?.get(0)?.toPair()?.first
+
+            return ""
+//            return getLabel(harPrediction[0])
+        }
+    }
+
+    private fun getLabel(output: FloatArray): String{
+        val outProb = softmax(output)
+        val big3 = mk.ndarray(mk[outProb[0 until 18].sum(),outProb[18], outProb[19]])
+        val top1Index = big3.argMax()
+        return if(top1Index == 0 )
+            ""
+        else if(top1Index == 1)
+            "Painting:"+big3[top1Index].toString()+"%"
+        else
+            "Interview:"+big3[top1Index].toString()+"%"
+    }
+
+    private fun softmax(output: FloatArray): NDArray<Float,D1> {
+        val out = mk.ndarray(output)
+        val expOut = out.exp()
+        val sumExpOut = out.sum()
+        val y = (expOut / sumExpOut).times(100f)
+        return y
     }
 
     fun vadInference() {
 
     }
+
+    //save skeleton data in one frame and append to (144,25,3) ndarray
+    fun saveSkeletonData(poseLandmarks: LandmarkProto.LandmarkList): D2Array<Float>{
+        var oneFrameSkeleton = mk.d2array(25,3){0.0f}
+        var landmark = poseLandmarks.landmarkList
+        for(i: Int in 0..24) {
+            if (landmark[i].visibility >= 0.75) {
+                oneFrameSkeleton[i, 0] = landmark[i].x
+                oneFrameSkeleton[i, 1] = landmark[i].y
+                oneFrameSkeleton[i, 2] = landmark[i].z
+            }
+        }
+        return oneFrameSkeleton
+    }
+
+    fun convertSkeletonData(framesSkeleton: D3Array<Float>): MultiArray<Float, DN> {
+        //dummy humman skeleton data to align the input dimension of the model
+        val dummyHumanSkeleton = mk.d3array(144,25,3) {0.0f}
+        val humansSkeleton = mk.stack(framesSkeleton,dummyHumanSkeleton)
+
+        //Transpose for processing in multiInput
+        val transposeSkeleton = humansSkeleton.transpose(3,1,2,0)
+
+        return transposeSkeleton.expandDims(axis = 0)
+    }
+
 
     fun destroyModel() {
         // Releases model resources if no longer used.

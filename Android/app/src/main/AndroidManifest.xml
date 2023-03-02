@@ -30,7 +30,7 @@
         <meta-data android:name="inputVideoStreamName" android:value="input_video"/>
         <meta-data android:name="outputVideoStreamName" android:value="input_video"/>
         <meta-data android:name="outputLandmarksStreamName" android:value="pose_landmarks"/>
-        <meta-data android:name="outputLandmarksStreamNamedWorld" android:value="pose_world_landmarks"/>
+        <meta-data android:name="outputLandmarksStreamNameWorld" android:value="pose_world_landmarks"/>
 
         <activity
             android:name=".MainActivity"

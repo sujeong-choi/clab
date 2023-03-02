@@ -3,31 +3,21 @@ package com.example.android
 import android.content.Context
 import android.content.res.AssetManager
 import android.graphics.Bitmap
-import android.graphics.SurfaceTexture
-import android.media.Image
+import android.graphics.Point
+import android.graphics.Rect
 import android.media.MediaMetadataRetriever
 import android.media.ThumbnailUtils
-import android.opengl.GLES20
 import android.os.Handler
 import android.os.HandlerThread
 import android.util.Size
 import android.view.PixelCopy
-import android.view.SurfaceHolder
 import android.view.SurfaceView
-import androidx.camera.core.ExperimentalGetImage
-import androidx.camera.core.ImageInfo
-import androidx.camera.core.ImageProxy
 import com.google.mediapipe.formats.proto.LandmarkProto.NormalizedLandmarkList
-import com.google.mlkit.vision.common.InputImage
-import com.google.mlkit.vision.common.internal.ImageConvertUtils
 import org.opencv.android.Utils
 import org.opencv.core.CvType
 import org.opencv.core.Mat
-import java.io.BufferedOutputStream
 import java.io.FileInputStream
 import java.io.IOException
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 import java.nio.MappedByteBuffer
 import java.nio.channels.FileChannel
 import kotlin.math.abs
@@ -128,16 +118,5 @@ class CommonUtils(context: Context) {
         }
         metadataRetriever.release()
         return videoFrames
-    }
-
-    // HAR Utils
-    private fun getLandmarksDebugString(landmarks: NormalizedLandmarkList): String? {
-        var landmarkIndex = 0
-        var landmarksString = ""
-        for (landmark in landmarks.landmarkList) {
-            landmarksString += "Landmark[$landmarkIndex]: (${landmark.x}, ${landmark.y}, ${landmark.z})"
-            ++landmarkIndex
-        }
-        return landmarksString
     }
 }

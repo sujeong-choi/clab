@@ -55,12 +55,12 @@
         android:layout_marginTop="30dp"
         tools:context=".VideoFragment">
 
-        <FrameLayout android:id="@+id/surfaceFrame"
+        <FrameLayout
+            android:id="@+id/surfaceFrame"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:layout_marginTop="30dp"
-            tools:context=".VideoFragment">
-        </FrameLayout>
+            tools:context=".VideoFragment"/>
 
         <androidx.camera.view.PreviewView
             android:id="@+id/previewView"
@@ -110,8 +110,8 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:orientation="horizontal"
             android:gravity="center"
+            android:orientation="horizontal"
             android:paddingLeft="16dp"
             android:paddingRight="16dp">
 
@@ -128,8 +128,8 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_gravity="bottom|center_horizontal"
-                android:layout_marginBottom="30dp"
                 android:layout_marginStart="50dp"
+                android:layout_marginBottom="30dp"
                 android:text="@string/record_label" />
         </LinearLayout>
 
@@ -157,14 +157,26 @@
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent"
             tools:ignore="RtlHardcoded" />
+    </FrameLayout>
+
+    <FrameLayout
+        android:id="@+id/loadingContainer"
+        android:layout_width="fill_parent"
+        android:layout_height="fill_parent"
+        android:clickable="true"
+        android:focusable="true"
+        android:focusableInTouchMode="true"
+        android:alpha="0.8"
+        android:background="#80000000"
+        tools:context=".VideoFragment"
+        android:visibility="gone" >
 
         <ProgressBar
             android:id="@+id/progressBar"
             style="?android:attr/progressBarStyleLarge"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:visibility="gone"
-            android:layout_gravity="center" />
+            android:layout_gravity="center"/>
     </FrameLayout>
 
 </RelativeLayout>
