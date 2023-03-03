@@ -49,9 +49,14 @@ import java.util.concurrent.Executor
 import java.util.concurrent.Executors
 
 
-/**
- * A simple [Fragment] subclass as the default destination in the navigation.
- */
+class GlobalVars {
+    companion object {
+        @JvmField
+        // setup onnx model
+        var ortEnv: OrtEnvironment =  OrtEnvironment.getEnvironment()
+    }
+}
+
 class VideoFragment : Fragment(R.layout.video_fragment) {
     // view variables
     private lateinit var binding: VideoFragmentBinding
@@ -61,6 +66,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
     private lateinit var previewViewSmall: ImageView
     private lateinit var recordButton: Button
     private lateinit var detectButton: Button
+    private lateinit var testVad: Button
     private lateinit var recordingCircle: ImageView
     private lateinit var harLabel: Button
     private lateinit var rectOverlay: RectOverlay
@@ -73,10 +79,8 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
     private lateinit var commonUtils: CommonUtils
     private lateinit var harHelper: HARHelper
     private lateinit var pfdHelper: PFDHelper
-    private lateinit var ortEnv: OrtEnvironment
     private lateinit var pfdSession: OrtSession
     private lateinit var harSession: OrtSession
-    private lateinit var vadSession: OrtSession
 
     // camera variables
     private lateinit var cameraProviderFuture: ListenableFuture<ProcessCameraProvider>
@@ -161,6 +165,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
         previewViewSmall = binding.previewViewSmall
         recordButton = binding.recordButton
         detectButton = binding.detectFrameButton
+        testVad = binding.testVad
         recordingCircle = binding.recordingCircle
         rectOverlay = binding.rectOverlay
         loadingView = binding.loadingContainer
@@ -256,7 +261,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                         val input = harHelper.convertSkeletonData(framesSkeleton)
 
                         // send to model
-                        var label: String = harHelper.harInference(input, harSession, vadSession, ortEnv)
+                        var label: String = harHelper.harInference(input, harSession)
 
                         clearHarSkeleton()
                     }
@@ -304,14 +309,12 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
     }
 
     private fun setupOnnxModel() {
-        // setup onnx model
-        ortEnv = OrtEnvironment.getEnvironment()
+
 //        val options = OrtSession.SessionOptions()
 //        options.addNnapi()
 //        options.setExecutionMode(OrtSession.SessionOptions.ExecutionMode.PARALLEL)
-        pfdSession = ortEnv.createSession(commonUtils.readModel(ModelType.PFD))
-        harSession = ortEnv.createSession(commonUtils.readModel(ModelType.HAR))
-        vadSession = ortEnv.createSession(commonUtils.readModel(ModelType.VAD))
+        pfdSession = GlobalVars.ortEnv.createSession(commonUtils.readModel(ModelType.PFD))
+        harSession = GlobalVars.ortEnv.createSession(commonUtils.readModel(ModelType.HAR))
     }
 
     private fun clearHarSkeleton() {
@@ -419,6 +422,10 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
             findNavController().navigate(R.id.action_VideoFragment_to_TimelapseFragment)
         }
 
+        testVad.setOnClickListener{
+            harHelper.vadInference()
+        }
+
         binding.selectButton.setOnClickListener {
             val intent = Intent(Intent.ACTION_GET_CONTENT)
             intent.type = "video/*"
@@ -460,7 +467,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                     })
 
                     val pfdResult: PfdResult? =
-                        bitmap?.let { it1 -> pfdHelper.pfdInference(it1, pfdSession, ortEnv) }
+                        bitmap?.let { it1 -> pfdHelper.pfdInference(it1, pfdSession) }
 
                     requireActivity().runOnUiThread(java.lang.Runnable {
                         // hide loading spinner
@@ -640,7 +647,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
 
             // pass all video frames to pfd inference function
             // fix only pass one frame
-            val output = pfdHelper.pfdInference(videoFrames[0], pfdSession, ortEnv)
+            val output = pfdHelper.pfdInference(videoFrames[0], pfdSession)
 
             // TODO: draw keypoints on top of videoView
 
@@ -788,7 +795,6 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
 
         pfdSession.close()
         harSession.close()
-        vadSession.close()
         pfdHelper.destroyModel()
         harHelper.destroyModel()
     }

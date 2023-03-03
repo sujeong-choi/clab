@@ -74,7 +74,7 @@ class PFDHelper(val context: Context) {
     }
 
 
-    fun pfdInference(bitmap: Bitmap, ortSession: OrtSession, env: OrtEnvironment): PfdResult {
+    fun pfdInference(bitmap: Bitmap, ortSession: OrtSession): PfdResult {
         // output object
         val sortedOutput = mutableMapOf<String, Any>()
 
@@ -83,6 +83,7 @@ class PFDHelper(val context: Context) {
         val inputName1: String = inputNameIterator.next()
         val shape = longArrayOf(3, bitmap.height.toLong(), bitmap.width.toLong())
 
+        val env = GlobalVars.ortEnv
         env.use {
             val tensor0 = OnnxTensor.createTensor(env, preProcess(bitmap), shape)
 
@@ -95,7 +96,7 @@ class PFDHelper(val context: Context) {
             inputMap[inputName0] = tensor0
             inputMap[inputName1] = tensor1
 
-            val output = ortSession?.run(inputMap)
+            val output = ortSession.run(inputMap)
 
             val outputNames = ortSession.outputNames.toList()
 

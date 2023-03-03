@@ -27,7 +27,12 @@ import kotlin.math.exp
 // save the video
 class HARHelper(val context: Context) {
     private lateinit var poseDetector: PoseDetector
+    private var isListening: Boolean = false
     private val classificationExecutor: Executor = Executors.newSingleThreadExecutor()
+    // vad variables
+    private val vadService by lazy {
+        VadService(context)
+    }
 
     init {
         // Pose detector
@@ -53,7 +58,7 @@ class HARHelper(val context: Context) {
             }
     }
 
-    fun harInference(inputSkeleton: MultiArray<Float, DN>, harSession: OrtSession, vadSession: OrtSession, env: OrtEnvironment): String {
+    fun harInference(inputSkeleton: MultiArray<Float, DN>, harSession: OrtSession): String {
         val shape = longArrayOf(1, 3, 144, 25, 2)
         val capacity = shape.reduce{acc, s -> acc * s}.toInt()
 
@@ -66,12 +71,14 @@ class HARHelper(val context: Context) {
         floatBuffer.put(inputSkeleton.toFloatArray())
         floatBuffer.position(0)
 
+        val env = GlobalVars.ortEnv
+
         env.use {
             val tensor0 = OnnxTensor.createTensor(env, floatBuffer, shape)
             val inputMap = mutableMapOf<String, OnnxTensor>()
             inputMap[inputName0] = tensor0
 
-            val output = harSession?.run(inputMap)
+            val output = harSession.run(inputMap)
 
             val prediction: OnnxTensor = output?.toList()?.get(0)?.toPair()?.second as OnnxTensor
 
@@ -79,7 +86,7 @@ class HARHelper(val context: Context) {
             prediction.floatBuffer.get(predictionArray)
 
             // get vad prediction
-            vadSession
+            vadInference()
 
             return getLabel(predictionArray)
         }
@@ -158,8 +165,27 @@ class HARHelper(val context: Context) {
         return transposeSkeleton.expandDims(axis = 0)
     }
 
-    fun vadInference() {
+    private val recognitionListener = object : RecognitionListener {
+        override fun onResult(hypothesis: String?) {
+            if (hypothesis != null)
+               Log.v("HARHELPER", "Done: $hypothesis")
+        }
 
+        override fun onError(exception: Exception?) {
+            Log.e("VoiceTrigger", "Error", exception)
+        }
+
+    }
+
+    fun vadInference() {
+        // TODO: Implement speech service
+        if (!isListening) {
+            vadService.startListening(recognitionListener)
+        } else {
+            vadService.stop()
+        }
+        isListening = !isListening
+        // TODO: destroy model after use
     }
 
     fun destroyModel() {
