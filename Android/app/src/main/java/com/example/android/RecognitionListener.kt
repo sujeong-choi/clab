@@ -1,7 +1,7 @@
 package com.example.android
 
 interface RecognitionListener {
-    fun onResult(hypothesis: String?)
+    fun onResult(hypothesis: Float?)
 
     fun onError(exception: Exception?)
 }

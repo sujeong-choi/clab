@@ -98,8 +98,8 @@ class VadService(
                 if (nread < 0) throw RuntimeException("Error reading audio buffer")
                 val floatArray =
                     buffer.map { it.toFloat() / Short.MAX_VALUE.toFloat() }.toFloatArray()
-                val text = if (recognizer.checkIfChunkHasVoice(floatArray)) "1" else "0"
-                mainHandler.post { listener.onResult(text) }
+                val numRes = recognizer.checkIfChunkHasVoice(floatArray)
+                mainHandler.post { listener.onResult(numRes) }
             }
             recorder.stop()
         }
@@ -114,10 +114,9 @@ class VadService(
             }
         }
 
-        fun checkIfChunkHasVoice(floatInputBuffer: FloatArray): Boolean {
+        fun checkIfChunkHasVoice(floatInputBuffer: FloatArray): Float {
             val result = vadModule.getResult(floatInputBuffer)
-            val probabilityOfSpeech = result.toTensor().dataAsFloatArray[1]
-            return probabilityOfSpeech > VAD_TRESHOLD
+            return result.toTensor().dataAsFloatArray[1]
         }
 
         private fun loadModule(path: String): Module {

@@ -1,10 +1,10 @@
 package com.example.android
 
 import ai.onnxruntime.OnnxTensor
-import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
 import android.content.Context
 import android.util.Log
+import com.google.common.math.DoubleMath
 import com.google.mediapipe.formats.proto.LandmarkProto
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.pose.PoseDetection
@@ -33,6 +33,7 @@ class HARHelper(val context: Context) {
     private var previousVad = 0
     private var updatedLabel = 0
     private var updatedVad = 0
+    private var vadProb: Float = 0f
     // vad variables
     private val vadService by lazy {
         VadService(context)
@@ -89,10 +90,7 @@ class HARHelper(val context: Context) {
             val predictionArray: FloatArray = FloatArray(prediction.floatBuffer.remaining())
             prediction.floatBuffer.get(predictionArray)
 
-            // get vad prediction
-            vadInference()
-
-            return getLabel(predictionArray, 0f)
+            return getLabel(predictionArray, vadProb)
         }
     }
 
@@ -100,9 +98,9 @@ class HARHelper(val context: Context) {
         return try {
             val harOutProb = softmax(harOutput)
             val big3 = arrayOf(
-                harOutProb.sliceArray(0 until 18).sum(),
-                harOutProb[18],
-                harOutProb[19]
+                harOutProb.sliceArray(0 until 17).max(),
+                harOutProb[17],
+                harOutProb[18]
             )
 
             var top1Index = 0
@@ -115,13 +113,16 @@ class HARHelper(val context: Context) {
                 }
             }
 
-            val vad = if (vadOutput > 0.5) 1 else 0
+            val isVoiceDetected = if (vadOutput > 0.5f) 1 else 0
 
-            if(updatedVad != vad && vad == previousVad) {
-                updatedVad = vad
+            if(updatedVad != isVoiceDetected && isVoiceDetected == previousVad) {
+                updatedVad = isVoiceDetected
             }
-            previousVad = vad
-            top1Index = if(top1Index==2 && updatedVad==0) 0 else 2
+            previousVad = isVoiceDetected
+
+            if(top1Index==2 && updatedVad==0){
+                top1Index = 0
+            }
 
             if(top1Index!=updatedLabel && top1Index==previousLabel){
                 updatedLabel = top1Index
@@ -129,9 +130,9 @@ class HARHelper(val context: Context) {
             previousLabel = top1Index
 
             when (updatedLabel) {
-                0 -> ""
-                1 -> "Painting:" + big3[top1Index].toString() + "%"
-                else -> "Interview:" + big3[top1Index].toString() + "%"
+                0 -> "Other"
+                1 -> "Painting:" + String.format("%.1f", (big3[top1Index] * 100)) + "%"
+                else -> "Interview:" + String.format("%.1f", (big3[top1Index] * 100)) + "%"
             }
         } catch (e: Exception) {
             e.message?.let { Log.v("HAR", it) }
@@ -183,26 +184,23 @@ class HARHelper(val context: Context) {
     }
 
     private val recognitionListener = object : RecognitionListener {
-        override fun onResult(hypothesis: String?) {
+        override fun onResult(hypothesis: Float?) {
             if (hypothesis != null)
-               Log.v("HARHELPER", "Done: $hypothesis")
+                vadProb = hypothesis
         }
 
         override fun onError(exception: Exception?) {
             Log.e("VoiceTrigger", "Error", exception)
         }
-
     }
 
     fun vadInference() {
-        // TODO: Implement speech service
         if (!isListening) {
             vadService.startListening(recognitionListener)
         } else {
             vadService.stop()
         }
         isListening = !isListening
-        // TODO: destroy model after use
     }
 
     fun destroyModel() {
