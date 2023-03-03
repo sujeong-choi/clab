@@ -4,6 +4,7 @@ import ai.onnxruntime.OnnxTensor
 import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
 import android.content.Context
+import android.util.Log
 import com.google.mediapipe.formats.proto.LandmarkProto
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.pose.PoseDetection
@@ -11,10 +12,7 @@ import com.google.mlkit.vision.pose.PoseDetector
 import com.google.mlkit.vision.pose.defaults.PoseDetectorOptions
 import org.jetbrains.kotlinx.multik.api.d2array
 import org.jetbrains.kotlinx.multik.api.d3array
-import org.jetbrains.kotlinx.multik.api.math.argMax
-import org.jetbrains.kotlinx.multik.api.math.exp
 import org.jetbrains.kotlinx.multik.api.mk
-import org.jetbrains.kotlinx.multik.api.ndarray
 import org.jetbrains.kotlinx.multik.ndarray.data.*
 import org.jetbrains.kotlinx.multik.ndarray.operations.*
 import java.nio.ByteBuffer
@@ -22,6 +20,7 @@ import java.nio.ByteOrder
 import java.nio.FloatBuffer
 import java.util.concurrent.Executor
 import java.util.concurrent.Executors
+import kotlin.math.exp
 
 
 // show the frames on the video
@@ -54,16 +53,11 @@ class HARHelper(val context: Context) {
             }
     }
 
-    fun readHarModel(): ByteArray {
-        val modelID = R.raw.har_gcn
-        return context.resources.openRawResource(modelID).readBytes()
-    }
-
-    fun harInference(inputSkeleton: MultiArray<Float, DN>, ortSession: OrtSession, env: OrtEnvironment): String {
+    fun harInference(inputSkeleton: MultiArray<Float, DN>, harSession: OrtSession, vadSession: OrtSession, env: OrtEnvironment): String {
         val shape = longArrayOf(1, 3, 144, 25, 2)
         val capacity = shape.reduce{acc, s -> acc * s}.toInt()
 
-        val inputNameIterator = ortSession.inputNames!!.iterator()
+        val inputNameIterator = harSession.inputNames!!.iterator()
         val inputName0: String = inputNameIterator.next()
 
         val bb: ByteBuffer = ByteBuffer.allocateDirect(capacity * 4)
@@ -77,37 +71,66 @@ class HARHelper(val context: Context) {
             val inputMap = mutableMapOf<String, OnnxTensor>()
             inputMap[inputName0] = tensor0
 
-            val output = ortSession?.run(inputMap)
+            val output = harSession?.run(inputMap)
 
-            val prediction = output?.toList()?.get(0)?.toPair()?.first
+            val prediction: OnnxTensor = output?.toList()?.get(0)?.toPair()?.second as OnnxTensor
 
-            return ""
-//            return getLabel(harPrediction[0])
+            val predictionArray: FloatArray = FloatArray(prediction.floatBuffer.remaining())
+            prediction.floatBuffer.get(predictionArray)
+
+            // get vad prediction
+            vadSession
+
+            return getLabel(predictionArray)
         }
     }
 
     private fun getLabel(output: FloatArray): String{
-        val outProb = softmax(output)
-        val big3 = mk.ndarray(mk[outProb[0 until 18].sum(),outProb[18], outProb[19]])
-        val top1Index = big3.argMax()
-        return if(top1Index == 0 )
+        return try {
+            val outProb = softmax(output)
+            val big3 = arrayOf(
+                outProb.sliceArray(0 until 18).sum(),
+                outProb[18],
+                outProb[19]
+            )
+
+            var top1Index = 0
+            var topValue = big3[0]
+
+            for (i in 1 until big3.size) {
+                if (big3[i] > topValue) {
+                    top1Index = i
+                    topValue = big3[i]
+                }
+            }
+
+            when (top1Index) {
+                0 -> ""
+                1 -> "Painting:" + big3[top1Index].toString() + "%"
+                else -> "Interview:" + big3[top1Index].toString() + "%"
+            }
+        } catch (e: Exception) {
+            e.message?.let { Log.v("HAR", it) }
             ""
-        else if(top1Index == 1)
-            "Painting:"+big3[top1Index].toString()+"%"
-        else
-            "Interview:"+big3[top1Index].toString()+"%"
+        }
     }
 
-    private fun softmax(output: FloatArray): NDArray<Float,D1> {
-        val out = mk.ndarray(output)
-        val expOut = out.exp()
-        val sumExpOut = out.sum()
-        val y = (expOut / sumExpOut).times(100f)
-        return y
-    }
+    private fun softmax(input: FloatArray): FloatArray {
+        val output = FloatArray(input.size)
+        var sum = 0.0f
 
-    fun vadInference() {
+        // Compute exponential of each element and sum them up
+        for (i in input.indices) {
+            output[i] = exp(input[i].toDouble()).toFloat()
+            sum += output[i]
+        }
 
+        // Normalize by dividing each element by the sum
+        for (i in output.indices) {
+            output[i] /= sum
+        }
+
+        return output
     }
 
     //save skeleton data in one frame and append to (144,25,3) ndarray
@@ -135,6 +158,9 @@ class HARHelper(val context: Context) {
         return transposeSkeleton.expandDims(axis = 0)
     }
 
+    fun vadInference() {
+
+    }
 
     fun destroyModel() {
         // Releases model resources if no longer used.

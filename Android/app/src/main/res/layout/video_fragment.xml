@@ -91,20 +91,31 @@
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent" />
 
+        <ImageView
+            android:id="@+id/recordingCircle"
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:layout_gravity="end"
+            android:layout_marginTop="40dp"
+            android:layout_marginEnd="20dp"
+            android:visibility="gone"
+            android:src="@drawable/circle_progress_drawable" />
+
         <TextView
-            android:id="@+id/recordText"
+            android:id="@+id/harLabel"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="end"
-            android:layout_marginTop="30dp"
+            android:layout_marginTop="70dp"
+            android:layout_marginEnd="20dp"
             android:alpha="0.8"
             android:background="#80000000"
             android:padding="16dp"
-            android:text="@string/recording_label"
+            android:text="@string/har_label"
             android:textColor="#ffffff"
             android:textSize="15sp"
             android:textStyle="bold"
-            android:visibility="gone" />
+            android:visibility="gone"/>
 
 
         <LinearLayout

@@ -22,13 +22,21 @@ import java.nio.MappedByteBuffer
 import java.nio.channels.FileChannel
 import kotlin.math.abs
 
+enum class ModelType(val modelName: String) {
+    HAR("har_gcn"), PFD("keypoint_rcnn"), VAD("silero_vad")
+}
 
-class CommonUtils(context: Context) {
+class CommonUtils(val context: Context) {
     // PFD Utils
     fun bitmapToMat(bitmap: Bitmap): Mat {
         val mat = Mat(bitmap.height, bitmap.width, CvType.CV_8UC4)
         Utils.bitmapToMat(bitmap, mat)
         return mat
+    }
+
+    fun readModel(modelType: ModelType): ByteArray {
+        val modelID = context.resources.getIdentifier(modelType.modelName, "raw", context.packageName)
+        return context.resources.openRawResource(modelID).readBytes()
     }
 
     fun matToBitmap(mat: Mat): Bitmap? {

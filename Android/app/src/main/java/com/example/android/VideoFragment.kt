@@ -61,7 +61,8 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
     private lateinit var previewViewSmall: ImageView
     private lateinit var recordButton: Button
     private lateinit var detectButton: Button
-    private lateinit var recordText: TextView
+    private lateinit var recordingCircle: ImageView
+    private lateinit var harLabel: Button
     private lateinit var rectOverlay: RectOverlay
     private lateinit var mediaController: MediaController
     private lateinit var loadingView: FrameLayout
@@ -75,6 +76,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
     private lateinit var ortEnv: OrtEnvironment
     private lateinit var pfdSession: OrtSession
     private lateinit var harSession: OrtSession
+    private lateinit var vadSession: OrtSession
 
     // camera variables
     private lateinit var cameraProviderFuture: ListenableFuture<ProcessCameraProvider>
@@ -91,6 +93,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
     private lateinit var processor: FrameProcessor
 
     // class variables
+    private var isLoading: Boolean = false
     private var isRecording: Boolean = false
     private var isKeypointSelected: Boolean = false
     private var isCameraFacingFront: Boolean = false
@@ -99,7 +102,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
     private var globalLandmark: NormalizedLandmarkList? = null
     private var globalBitmapStore: MutableList<Bitmap> = mutableListOf()
     private var previewSize: Size? = null
-    private var frameCnt = 1
+    private var frameCount = 1
     private var framesSkeleton = mk.d3array(144, 25, 3) { 0.0f }
     private val REQUIRED_PERMISSIONS: Array<String> =
         arrayOf(
@@ -158,7 +161,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
         previewViewSmall = binding.previewViewSmall
         recordButton = binding.recordButton
         detectButton = binding.detectFrameButton
-        recordText = binding.recordText
+        recordingCircle = binding.recordingCircle
         rectOverlay = binding.rectOverlay
         loadingView = binding.loadingContainer
 
@@ -224,10 +227,10 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                     LandmarkProto.LandmarkList.parseFrom(landmarksRaw)
 
                 if (enableHarInference) {
-                    if (frameCnt < 60) {//Collect Skeleton data for 60 frames or 4 seconds(4 seconds not yet implemented).
-                        framesSkeleton[frameCnt] =
+                    if (frameCount < 60) {//Collect Skeleton data for 60 frames or 4 seconds(4 seconds not yet implemented).
+                        framesSkeleton[frameCount] =
                             harHelper.saveSkeletonData(poseLandmarks) //save landmarks in array shape (144,25,3)
-                        frameCnt++
+                        frameCount++
                     } else {
                         commonUtils.getFrameBitmap(previewDisplayView) { bitmap: Bitmap? ->
                             if (!pfdHelper.isHandInFrame(
@@ -246,17 +249,16 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
 
 
                         // if hand isn't inside
-                        framesSkeleton[frameCnt] = harHelper.saveSkeletonData(poseLandmarks)
+                        framesSkeleton[frameCount] = harHelper.saveSkeletonData(poseLandmarks)
 
+
+                        // TODO: move this inference to another thread
                         val input = harHelper.convertSkeletonData(framesSkeleton)
 
                         // send to model
-                        harHelper.harInference(input, harSession, ortEnv)
+                        var label: String = harHelper.harInference(input, harSession, vadSession, ortEnv)
 
-                        framesSkeleton =
-                            mk.d3array(144, 25, 3) { 0.0f } // reinitialize landmarks array
-                        frameCnt = 1
-
+                        clearHarSkeleton()
                     }
                 }
             }
@@ -277,6 +279,8 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                     return@addPacketCallback
                 }
             }
+
+            setupOnnxModel()
         } catch (e: Exception) {
             e.message?.let { Log.v(TAG, it) }
         }
@@ -297,6 +301,23 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
         } else {
             startCamera()
         }
+    }
+
+    private fun setupOnnxModel() {
+        // setup onnx model
+        ortEnv = OrtEnvironment.getEnvironment()
+//        val options = OrtSession.SessionOptions()
+//        options.addNnapi()
+//        options.setExecutionMode(OrtSession.SessionOptions.ExecutionMode.PARALLEL)
+        pfdSession = ortEnv.createSession(commonUtils.readModel(ModelType.PFD))
+        harSession = ortEnv.createSession(commonUtils.readModel(ModelType.HAR))
+        vadSession = ortEnv.createSession(commonUtils.readModel(ModelType.VAD))
+    }
+
+    private fun clearHarSkeleton() {
+        framesSkeleton =
+            mk.d3array(144, 25, 3) { 0.0f } // reinitialize landmarks array
+        frameCount = 1
     }
 
 
@@ -418,23 +439,12 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
         // live start and stop on click listeners
         recordButton.setOnClickListener {
             rectOverlay.clear()
-            isRecording = !isRecording
+            toggleRecording()
 
             if (isRecording) {
                 // start video recording
                 drawPreview(globalPfdResult)
-
-                // start HAR inference
-                enableHarInference = true
-
             } else {
-                recordText.visibility = View.GONE
-                recordButton.text = "RECORD"
-                previewViewSmall.visibility = View.GONE
-
-                // start HAR inference
-                enableHarInference = false
-
                 // save timelapse
 //                pfdHelper.saveVideoFromBitmaps(globalBitmapStore, "/", globalBitmapStore[0].width, globalBitmapStore[0].width, 30)
 
@@ -511,6 +521,42 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
         converter.close()
     }
 
+    private fun toggleLoading() {
+        if (isLoading) {
+
+        } else if (!isLoading) {
+
+        }
+    }
+
+    private fun toggleRecording() {
+        isRecording = !isRecording
+
+        if (isRecording) {
+            recordingCircle.visibility = View.VISIBLE
+            harLabel.visibility = View.VISIBLE
+            previewViewSmall.visibility = View.VISIBLE
+
+            // disable detect button while recording
+            detectButton.isEnabled = false
+
+            // start HAR inference
+            enableHarInference = true
+            clearHarSkeleton()
+        } else if (!isRecording) {
+            recordingCircle.visibility = View.GONE
+            harLabel.visibility = View.GONE
+            previewViewSmall.visibility = View.GONE
+
+            // enable detect button while recording
+            detectButton.isEnabled = true
+
+            // start HAR inference
+            enableHarInference = false
+            clearHarSkeleton()
+        }
+    }
+
     private fun checkPermissions(): Boolean {
         for (permission in REQUIRED_PERMISSIONS) {
             if (ActivityCompat.checkSelfPermission(requireContext(), permission)
@@ -526,14 +572,6 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
         previewDisplayView.visibility = View.GONE
         val viewGroup: ViewGroup = binding.surfaceFrame
         viewGroup.addView(previewDisplayView)
-
-        // setup onnx model
-        ortEnv = OrtEnvironment.getEnvironment()
-//        val options = OrtSession.SessionOptions()
-//        options.addNnapi()
-//        options.setExecutionMode(OrtSession.SessionOptions.ExecutionMode.PARALLEL)
-        pfdSession = ortEnv.createSession(pfdHelper.readPfdModel())
-        harSession = ortEnv.createSession(harHelper.readHarModel())
 
         previewDisplayView
             .holder
@@ -672,7 +710,6 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                         })
 
                         // perform perspective transformation and show image on previewViewSmall
-
                         if (!pfdHelper.isHandInFrame(
                                 bitmap!!,
                                 globalPfdResult.bbox.value[0],
@@ -680,9 +717,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                             )
                         ) {
                             requireActivity().runOnUiThread(java.lang.Runnable {
-                                recordText.visibility = View.VISIBLE
-                                recordButton.text = "STOP"
-                                previewViewSmall.visibility = View.VISIBLE
+                                toggleRecording()
 
                                 val transformedBitmap = bitmap?.let {
                                     pfdHelper.perspectiveTransformation(
@@ -707,6 +742,8 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
 
                                 // hide loading spinner
                                 loadingView.visibility = View.GONE
+
+                                toggleRecording()
                             })
                         }
 
@@ -750,6 +787,8 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
         super.onDestroy()
 
         pfdSession.close()
+        harSession.close()
+        vadSession.close()
         pfdHelper.destroyModel()
         harHelper.destroyModel()
     }

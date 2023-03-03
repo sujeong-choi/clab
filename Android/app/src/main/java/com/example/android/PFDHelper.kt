@@ -170,14 +170,14 @@ class PFDHelper(val context: Context) {
             val poseLandmarks: MutableList<FloatArray> = mutableListOf()
 
             for (landmark in filteredLandmarks) {
-                if (landmark.visibility < 0.75)
+                if (landmark.visibility < 0.85)
                     poseLandmarks.add(
                         floatArrayOf(
                             0f,
                             0f
                         )
                     )
-                else if (landmark.visibility >= 0.75)
+                else if (landmark.visibility >= 0.85)
                     poseLandmarks.add(
                         floatArrayOf(
                             landmark.x * frameWidth,
