@@ -26,9 +26,13 @@ import kotlin.math.exp
 // show the frames on the video
 // save the video
 class HARHelper(val context: Context) {
-    private lateinit var poseDetector: PoseDetector
+    private var poseDetector: PoseDetector
     private var isListening: Boolean = false
     private val classificationExecutor: Executor = Executors.newSingleThreadExecutor()
+    private var previousLabel = 0
+    private var previousVad = 0
+    private var updatedLabel = 0
+    private var updatedVad = 0
     // vad variables
     private val vadService by lazy {
         VadService(context)
@@ -88,17 +92,17 @@ class HARHelper(val context: Context) {
             // get vad prediction
             vadInference()
 
-            return getLabel(predictionArray)
+            return getLabel(predictionArray, 0f)
         }
     }
 
-    private fun getLabel(output: FloatArray): String{
+    private fun getLabel(harOutput: FloatArray, vadOutput : Float ): String{
         return try {
-            val outProb = softmax(output)
+            val harOutProb = softmax(harOutput)
             val big3 = arrayOf(
-                outProb.sliceArray(0 until 18).sum(),
-                outProb[18],
-                outProb[19]
+                harOutProb.sliceArray(0 until 18).sum(),
+                harOutProb[18],
+                harOutProb[19]
             )
 
             var top1Index = 0
@@ -111,7 +115,20 @@ class HARHelper(val context: Context) {
                 }
             }
 
-            when (top1Index) {
+            val vad = if (vadOutput > 0.5) 1 else 0
+
+            if(updatedVad != vad && vad == previousVad) {
+                updatedVad = vad
+            }
+            previousVad = vad
+            top1Index = if(top1Index==2 && updatedVad==0) 0 else 2
+
+            if(top1Index!=updatedLabel && top1Index==previousLabel){
+                updatedLabel = top1Index
+            }
+            previousLabel = top1Index
+
+            when (updatedLabel) {
                 0 -> ""
                 1 -> "Painting:" + big3[top1Index].toString() + "%"
                 else -> "Interview:" + big3[top1Index].toString() + "%"
