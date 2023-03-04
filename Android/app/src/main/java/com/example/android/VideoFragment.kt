@@ -14,6 +14,7 @@ import android.media.MediaRecorder
 import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
+import android.os.SystemClock
 import android.util.AttributeSet
 import android.util.Log
 import android.util.Size
@@ -44,6 +45,7 @@ import com.google.mediapipe.glutil.EglManager
 import com.google.protobuf.InvalidProtocolBufferException
 import org.jetbrains.kotlinx.multik.api.d3array
 import org.jetbrains.kotlinx.multik.api.mk
+import org.jetbrains.kotlinx.multik.ndarray.data.D2Array
 import org.jetbrains.kotlinx.multik.ndarray.data.set
 import org.opencv.android.OpenCVLoader
 import java.io.File
@@ -51,6 +53,8 @@ import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.Executor
 import java.util.concurrent.Executors
+import kotlin.collections.ArrayList
+import kotlin.concurrent.fixedRateTimer
 import kotlin.concurrent.thread
 
 
@@ -118,7 +122,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
     private var previewSize: Size? = null
     private var frameCount = 1
     private var pfdMsTimestamp: Long = System.currentTimeMillis()
-    private var framesSkeleton = mk.d3array(144, 25, 3) { 0.0f }
+    private var skeletonBuffer =  ArrayList<D2Array<Float>>()
     private var initialCapture: Boolean = true
     private val REQUIRED_PERMISSIONS: Array<String> =
         arrayOf(
@@ -210,6 +214,11 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
 
         // create output video file
 //        videoFile = createVideoFile()
+
+        //create skeleton HAR timer
+        val skeletonTimer = fixedRateTimer(name="SkeletonTimer", initialDelay = 0L, period = 4000L){
+            getSkelton()
+        }
     }
 
     private fun initMediaPipe() {
@@ -248,33 +257,8 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                 val poseLandmarks: LandmarkProto.LandmarkList =
                     LandmarkProto.LandmarkList.parseFrom(landmarksRaw)
 
-                if (enableHarInference) {
-                    if (frameCount < 60) {//Collect Skeleton data for 60 frames or 4 seconds(4 seconds not yet implemented).
-                        framesSkeleton[frameCount] =
-                            harHelper.saveSkeletonData(poseLandmarks) //save landmarks in array shape (144,25,3)
-                        frameCount++
-                    } else {
-                        // if hand isn't inside
-                        framesSkeleton[frameCount] = harHelper.saveSkeletonData(poseLandmarks)
-
-
-                        // TODO: move this inference to another thread
-                        val input = harHelper.convertSkeletonData(framesSkeleton)
-
-                        // send to model
-                        val label: String = harHelper.harInference(input, harSession)
-
-                        if (label.contains("Other")) recordingState = "Other"
-                        else if (label.contains("Painting")) recordingState = "Painting"
-                        else if (label.contains("Interview")) recordingState = "Interview"
-
-                        requireActivity().runOnUiThread(java.lang.Runnable {
-                            harLabel.text = label
-                        })
-
-                        clearHarSkeleton()
-                    }
-                }
+                if (enableHarInference)
+                    skeletonBuffer.add(harHelper.saveSkeletonData(poseLandmarks))
             }
 
             processor.addPacketCallback(
@@ -325,10 +309,24 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
         harSession = GlobalVars.ortEnv.createSession(commonUtils.readModel(ModelType.HAR))
     }
 
-    private fun clearHarSkeleton() {
-        framesSkeleton =
-            mk.d3array(144, 25, 3) { 0.0f } // reinitialize landmarks array
-        frameCount = 1
+    private fun getSkelton() {
+        if(enableHarInference) {
+            //for fast refreshing
+            val curSkeletonBuffer = ArrayList<D2Array<Float>>()
+            curSkeletonBuffer.addAll(skeletonBuffer)
+            skeletonBuffer.clear()
+
+            val input = harHelper.convertSkeletonData(skeletonBuffer)
+            val label: String = harHelper.harInference(input, harSession)
+
+            if (label.contains("Other")) recordingState = "Other"
+            else if (label.contains("Painting")) recordingState = "Painting"
+            else if (label.contains("Interview")) recordingState = "Interview"
+
+            requireActivity().runOnUiThread(java.lang.Runnable {
+                harLabel.text = label
+            })
+        }
     }
 
 
@@ -610,7 +608,6 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
             harHelper.vadInference()
 
             startRecording()
-            clearHarSkeleton()
         } else if (!isRecording) {
             recordingCircle.visibility = View.GONE
             frameCounter.visibility = View.GONE
@@ -628,7 +625,6 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
             harHelper.vadInference()
 
             stopRecording()
-            clearHarSkeleton()
         }
     }
 
