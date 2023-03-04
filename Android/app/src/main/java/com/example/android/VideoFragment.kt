@@ -481,16 +481,26 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                 harLabel.text = "No Activity"
 
                 // save timelapse
-                pfdHelper.saveVideoFromBitmaps(
-                    globalBitmapStore
-                )
+                if(globalBitmapStore.isNotEmpty()) {
+                    pfdHelper.saveVideoFromBitmaps(
+                        globalBitmapStore
+                    )
 
-                Toast.makeText(
-                    requireContext(),
-                    "Timelapse saved!",
-                    Toast.LENGTH_LONG
-                )
-                    .show()
+                    Toast.makeText(
+                        requireContext(),
+                        "Timelapse saved!",
+                        Toast.LENGTH_SHORT
+                    )
+                        .show()
+                }
+                else {
+                    Toast.makeText(
+                        requireContext(),
+                        "No frames detected!",
+                        Toast.LENGTH_SHORT
+                    )
+                        .show()
+                }
             }
         }
 
@@ -509,9 +519,6 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                         // hide loading spinner
                         loadingView.visibility = View.GONE
                     })
-
-                    // for memory optimization
-                    bitmap?.recycle()
 
                     if (pfdResult?.size != 0) {
                         globalPfdResult = pfdResult!!
@@ -533,6 +540,9 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                         )
                             .show()
                     }
+
+                    // for memory optimization
+                    bitmap?.recycle()
                 }
 
             } catch (e: Exception) {
@@ -846,16 +856,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                                 frameCounter.text = plusOne
                             })
                         } else if (isHandInFrame && recordingState == "Painting") {
-//                        else {
-                            requireActivity().runOnUiThread(java.lang.Runnable {
-                                Toast.makeText(
-                                    requireContext(),
-                                    "Hands in Painting!",
-                                    Toast.LENGTH_SHORT
-                                )
-                                    .show()
-//                                toggleRecording()
-                            })
+                            // Do something when hand is detected inside frame during painting
                         }
                     }
 

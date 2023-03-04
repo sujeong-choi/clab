@@ -9,8 +9,8 @@
     <LinearLayout
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
         android:gravity="center"
+        android:orientation="horizontal"
         android:paddingLeft="16dp"
         android:paddingRight="16dp">
 
@@ -45,10 +45,18 @@
 
         <FrameLayout
             android:id="@+id/surfaceFrame"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
+            android:layout_width="fill_parent"
+            android:layout_height="fill_parent"
             android:layout_marginTop="30dp"
-            tools:context=".VideoFragment"/>
+            android:layout_weight="1">
+
+            <TextView
+                android:id="@+id/no_camera_access_view"
+                android:layout_width="fill_parent"
+                android:layout_height="fill_parent"
+                android:gravity="center"
+                android:text="@string/no_camera_access" />
+        </FrameLayout>
 
         <androidx.camera.view.PreviewView
             android:id="@+id/previewView"
@@ -86,8 +94,8 @@
             android:layout_gravity="end"
             android:layout_marginTop="40dp"
             android:layout_marginEnd="20dp"
-            android:visibility="gone"
-            android:src="@drawable/circle_progress_drawable" />
+            android:src="@drawable/circle_progress_drawable"
+            android:visibility="gone" />
 
         <TextView
             android:id="@+id/frameCounter"
@@ -101,7 +109,7 @@
             android:textColor="#ffffff"
             android:textSize="15sp"
             android:textStyle="bold"
-            android:visibility="gone"/>
+            android:visibility="gone" />
 
         <TextView
             android:id="@+id/harLabel"
@@ -117,7 +125,7 @@
             android:textColor="#ffffff"
             android:textSize="15sp"
             android:textStyle="bold"
-            android:visibility="gone"/>
+            android:visibility="gone" />
 
 
         <LinearLayout
@@ -141,9 +149,9 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_gravity="bottom|center_horizontal"
-                android:visibility="gone"
                 android:layout_marginBottom="30dp"
-                android:text="TestVad" />
+                android:text="TestVad"
+                android:visibility="gone" />
 
             <Button
                 android:id="@+id/recordButton"
@@ -185,20 +193,20 @@
         android:id="@+id/loadingContainer"
         android:layout_width="fill_parent"
         android:layout_height="fill_parent"
+        android:alpha="0.8"
+        android:background="#80000000"
         android:clickable="true"
         android:focusable="true"
         android:focusableInTouchMode="true"
-        android:alpha="0.8"
-        android:background="#80000000"
-        tools:context=".VideoFragment"
-        android:visibility="gone" >
+        android:visibility="gone"
+        tools:context=".VideoFragment">
 
         <ProgressBar
             android:id="@+id/progressBar"
             style="?android:attr/progressBarStyleLarge"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_gravity="center"/>
+            android:layout_gravity="center" />
     </FrameLayout>
 
 </RelativeLayout>

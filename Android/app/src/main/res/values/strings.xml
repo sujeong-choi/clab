@@ -16,4 +16,5 @@
     <string name="live">Live</string>
     <string name="timelapse">Lapse</string>
     <string name="no_timelapse">No Timelapse</string>
+    <string name="no_camera_access">No Camera Access</string>
 </resources>
