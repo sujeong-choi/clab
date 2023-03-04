@@ -436,12 +436,6 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
             harHelper.vadInference()
         }
 
-        binding.selectButton.setOnClickListener {
-            val intent = Intent(Intent.ACTION_GET_CONTENT)
-            intent.type = "video/*"
-            startActivityForResult(intent, VIDEO_REQUEST_CODE)
-        }
-
         // live button listeners
         binding.liveButton.setOnClickListener {
             videoView.stopPlayback()
