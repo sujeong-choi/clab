@@ -36,16 +36,16 @@ class NTU_Feeder(Dataset):
         # (C, max_frame, V, M) -> (I, C*2, T, V, M)
         # data(3,?300?,25,2) -> data_new(3,6,144,25,2)
         # I'm not sure if it's 300 or 60.
-        joint, velocity, bone = self.multi_input(data[:,:self.T,:,:]) # self.T is 144
-        data_new = []
-        if 'J' in self.inputs:
-            data_new.append(joint)
-        if 'V' in self.inputs:
-            data_new.append(velocity)
-        if 'B' in self.inputs:
-            data_new.append(bone)
-        data_new = np.stack(data_new, axis=0)
-
+        # joint, velocity, bone = self.multi_input(data[:,:self.T,:,:]) # self.T is 144
+        # data_new = []
+        # if 'J' in self.inputs:
+        #     data_new.append(joint)
+        # if 'V' in self.inputs:
+        #     data_new.append(velocity)
+        # if 'B' in self.inputs:
+        #     data_new.append(bone)
+        # data_new = np.stack(data_new, axis=0)
+        data_new = data[:,:self.T,:,:]
         return data_new, label, name #"data_new" is the data used as input to the model.
 
     #Function to generate bone and velocity data based on keypoints x, y, z (If the input format is correct from above, you can just take it and use it.)
@@ -73,7 +73,7 @@ class NTU_Feeder(Dataset):
 
 class NTU_Location_Feeder():
     def __init__(self, data_shape):
-        _, _, self.T, self.V, self.M = data_shape
+        _,  self.T, self.V, self.M = data_shape
 
     def load(self, names):
         location = np.zeros((len(names), 2, self.T, self.V, self.M))

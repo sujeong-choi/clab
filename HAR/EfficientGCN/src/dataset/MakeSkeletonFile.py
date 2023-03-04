@@ -100,13 +100,14 @@ class FileController:
                 break
             
             if self.fps * 4 <= frame_cnt:
-                # print(str(frame_cnt)+"프레임 카운트")
                 break
             
-            if skip_cnt < skip_frame:
+            # if skip_cnt < int(skip_frame):
+            if skip_cnt < 2:
                 skip_cnt += 1
                 continue
             else:
+                frame_cnt += 1
                 skip_cnt = 1
 
             if new_h is None:
@@ -117,12 +118,11 @@ class FileController:
             if is_flip:
                 cv2.flip(frame, 1)
             frames.append(frame)
-            
             # frame_path = frame_tmp.format(frame_cnt + 1)
             # frame_paths.append(frame_path)
 
             # cv2.imwrite(frame_path, frame)
-            frame_cnt += 1
+            
         if self.isFolder:
             file_name = self.get_out_file_name(frame_name)
         else:
@@ -197,11 +197,11 @@ class FileController:
             if self.writer is None: 
                 video_fps = self.vid.get(cv2.CAP_PROP_FPS)
                 out_foler = './videos/'
-                self.writer = cv2.VideoWriter(out_foler+"testing.mp4", fourcc, 30, (w, h), True) 
+                self.writer = cv2.VideoWriter(out_foler+"testing_(23).mp4", fourcc, 15, (w, h), True) 
                 print(self.fps)
             for frame in frames:
                 if top1 != "others":
-                    cv2.putText(frame, res_str, (int(w*0.7), int(h*0.1)), FONTFACE, FONTSCALE,
+                    cv2.putText(frame, res_str, (int(w*0.8), int(h*0.1)), FONTFACE, FONTSCALE,
                             FONTCOLOR, THICKNESS, LINETYPE)  
                 # cv2.putText(frame, res_str, (10, 80), FONTFACE, 1,
                 #         FONTCOLOR, THICKNESS, LINETYPE)   
