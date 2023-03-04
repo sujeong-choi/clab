@@ -6,10 +6,6 @@ import android.content.Context
 import android.util.Log
 import com.google.common.math.DoubleMath
 import com.google.mediapipe.formats.proto.LandmarkProto
-import com.google.mlkit.vision.common.InputImage
-import com.google.mlkit.vision.pose.PoseDetection
-import com.google.mlkit.vision.pose.PoseDetector
-import com.google.mlkit.vision.pose.defaults.PoseDetectorOptions
 import org.jetbrains.kotlinx.multik.api.d2array
 import org.jetbrains.kotlinx.multik.api.d3array
 import org.jetbrains.kotlinx.multik.api.mk
@@ -26,7 +22,6 @@ import kotlin.math.exp
 // show the frames on the video
 // save the video
 class HARHelper(val context: Context) {
-    private var poseDetector: PoseDetector
     private var isListening: Boolean = false
     private val classificationExecutor: Executor = Executors.newSingleThreadExecutor()
     private var previousLabel = 0
@@ -40,29 +35,6 @@ class HARHelper(val context: Context) {
         VadService(context)
     }
 
-    init {
-        // Pose detector
-        val options = PoseDetectorOptions.Builder()
-            .setDetectorMode(PoseDetectorOptions.STREAM_MODE)
-            .build()
-
-        poseDetector = PoseDetection.getClient(options)
-    }
-
-
-    fun detectInImage(image: InputImage) {
-        poseDetector
-            .process(image)
-            .continueWith(
-                classificationExecutor
-            ) { task ->
-                val pose = task.result
-
-                println(pose.allPoseLandmarks)
-
-                // TODO: HarInference
-            }
-    }
 
     fun harInference(inputSkeleton: MultiArray<Float, DN>, harSession: OrtSession): String {
         val shape = longArrayOf(1, 3, 144, 25, 2)
@@ -173,7 +145,24 @@ class HARHelper(val context: Context) {
         return oneFrameSkeleton
     }
 
-    fun convertSkeletonData(framesSkeleton: D3Array<Float>): MultiArray<Float, DN> {
+    private fun sampleSkeletonData(skeletonBuffer: ArrayList<D2Array<Float>>):D3Array<Float>{
+        val framesSkeleton = mk.d3array(144, 25, 3) { 0.0f }
+        val frameNum = skeletonBuffer.size
+
+        if(frameNum>=60) {
+            val skipInterval = frameNum / 60.0
+            for (i in 0 until 60)
+                framesSkeleton[i] = skeletonBuffer[(i * skipInterval).toInt()]
+        }
+        else
+            for(i in 0 until frameNum)
+                framesSkeleton[i] = skeletonBuffer[i]
+        return framesSkeleton
+    }
+
+    fun convertSkeletonData(skeletonBuffer: ArrayList<D2Array<Float>>): MultiArray<Float, DN> {
+
+        val framesSkeleton = sampleSkeletonData(skeletonBuffer)
         //dummy humman skeleton data to align the input dimension of the model
         val dummyHumanSkeleton = mk.d3array(144, 25, 3) { 0.0f }
         val humansSkeleton = mk.stack(framesSkeleton, dummyHumanSkeleton)
