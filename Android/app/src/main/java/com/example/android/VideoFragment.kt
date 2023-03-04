@@ -12,7 +12,6 @@ import android.graphics.SurfaceTexture
 import android.media.MediaMetadataRetriever
 import android.media.MediaRecorder
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.util.AttributeSet
@@ -20,7 +19,6 @@ import android.util.Log
 import android.util.Size
 import android.view.*
 import android.widget.*
-import androidx.annotation.RequiresApi
 import androidx.camera.core.ExperimentalGetImage
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.video.Recorder
@@ -53,6 +51,7 @@ import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.Executor
 import java.util.concurrent.Executors
+import kotlin.concurrent.thread
 
 
 class GlobalVars {
@@ -73,6 +72,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
     private lateinit var previewViewSmall: ImageView
     private lateinit var recordButton: Button
     private lateinit var detectButton: Button
+    private lateinit var frameCounter: TextView
     private lateinit var testVad: Button
     private lateinit var recordingCircle: ImageView
     private lateinit var harLabel: TextView
@@ -110,12 +110,14 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
     private var isKeypointSelected: Boolean = false
     private var isCameraFacingFront: Boolean = false
     private var enableHarInference: Boolean = false
+    private var timelapseThread: Thread? = null
     private var globalPfdResult: PfdResult = PfdResult()
     private var globalLandmark: NormalizedLandmarkList? = null
     private var globalBitmapStore: MutableList<Bitmap> = mutableListOf()
     private var recordingState: String = "Other"
     private var previewSize: Size? = null
     private var frameCount = 1
+    private var pfdMsTimestamp: Long = System.currentTimeMillis()
     private var framesSkeleton = mk.d3array(144, 25, 3) { 0.0f }
     private var initialCapture: Boolean = true
     private val REQUIRED_PERMISSIONS: Array<String> =
@@ -173,6 +175,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
         timeLapseView = binding.timelapseView
         previewView = binding.previewView
         previewViewSmall = binding.previewViewSmall
+        frameCounter = binding.frameCounter
         recordButton = binding.recordButton
         detectButton = binding.detectFrameButton
         harLabel = binding.harLabel
@@ -251,13 +254,6 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                             harHelper.saveSkeletonData(poseLandmarks) //save landmarks in array shape (144,25,3)
                         frameCount++
                     } else {
-                        commonUtils.getFrameBitmap(previewDisplayView) { bitmap: Bitmap? ->
-                            // update preview screen if hand isn't in frame
-                            drawPreview(globalPfdResult)
-                            bitmap?.recycle()
-                        }
-
-
                         // if hand isn't inside
                         framesSkeleton[frameCount] = harHelper.saveSkeletonData(poseLandmarks)
 
@@ -292,6 +288,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                         globalLandmark = landmarks
                     }
 
+
                 } catch (e: InvalidProtocolBufferException) {
                     Log.e(TAG, "Couldn't Exception received - $e")
                     return@addPacketCallback
@@ -324,6 +321,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
     private fun setupOnnxModel() {
         val option = GlobalVars.ortoption
         option.addNnapi()
+
         pfdSession = GlobalVars.ortEnv.createSession(commonUtils.readModel(ModelType.PFD), option)
         harSession = GlobalVars.ortEnv.createSession(commonUtils.readModel(ModelType.HAR), option)
     }
@@ -461,17 +459,31 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
 
             if (isRecording) {
                 // start video recording
-                drawPreview(globalPfdResult)
+                // recording thread
+                timelapseThread = thread {
+                    while (isRecording) {
+                        commonUtils.getFrameBitmap(previewDisplayView) { bitmap: Bitmap? ->
+                            // update preview screen if hand isn't in frame
+                            drawPreview(globalPfdResult)
+                            bitmap?.recycle()
+                        }
+                        Thread.sleep(1000)
+                    }
+                }
+
+//                drawPreview(globalPfdResult)
             } else {
                 // stop video recording
 
+                // stop timelapse thread
+                timelapseThread?.join()
+
+                // reset har label
+                harLabel.text = "No Activity"
+
                 // save timelapse
                 pfdHelper.saveVideoFromBitmaps(
-                    globalBitmapStore,
-                    "/",
-                    globalBitmapStore[0].width,
-                    globalBitmapStore[0].width,
-                    30
+                    globalBitmapStore
                 )
 
             }
@@ -549,6 +561,9 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
     override fun onPause() {
         super.onPause()
         converter.close()
+
+        // Hide preview display until we re-open the camera again.
+        previewDisplayView.visibility = View.GONE
     }
 
     private fun toggleLoading() {
@@ -564,6 +579,8 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
 
         if (isRecording) {
             recordingCircle.visibility = View.VISIBLE
+            frameCounter.visibility = View.VISIBLE
+            frameCounter.text = "0"
             harLabel.visibility = View.VISIBLE
             previewViewSmall.visibility = View.VISIBLE
             recordButton.text = "STOP"
@@ -581,6 +598,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
             clearHarSkeleton()
         } else if (!isRecording) {
             recordingCircle.visibility = View.GONE
+            frameCounter.visibility = View.GONE
             harLabel.visibility = View.GONE
             previewViewSmall.visibility = View.GONE
             recordButton.text = "RECORD"
@@ -792,11 +810,6 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                         .show()
                 } else {
                     commonUtils.getFrameBitmap(previewDisplayView) { bitmap: Bitmap? ->
-                        requireActivity().runOnUiThread(java.lang.Runnable {
-                            // show loading spinner
-                            loadingView.visibility = View.VISIBLE
-                        })
-
                         val isHandInFrame = pfdHelper.isHandInFrame(
                             bitmap!!,
                             globalPfdResult.bbox.value[0],
@@ -805,8 +818,8 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
 
                         // perform perspective transformation and show image on previewViewSmall
                         // TODO: Replace this if condition when har is more accurate
-//                        if (!isHandInFrame && (recordingState == "Painting" || initialCapture)) {
-                        if (!isHandInFrame) {
+                        if (!isHandInFrame && (recordingState == "Painting" || initialCapture)) {
+//                        if (!isHandInFrame) {
                             requireActivity().runOnUiThread(java.lang.Runnable {
                                 val transformedBitmap = bitmap.let {
                                     pfdHelper.perspectiveTransformation(
@@ -821,24 +834,24 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                                 initialCapture = false
 
                                 // add bitmap to global
-                                globalBitmapStore.plus(bitmap.copy(bitmap.config, true))
+                                globalBitmapStore.add(bitmap.copy(bitmap.config, true))
 
+                                val plusOne: String =
+                                    (frameCounter.text.toString().toInt() + 1).toString()
+                                frameCounter.text = plusOne
                             })
                         } else if (isHandInFrame && recordingState == "Painting") {
+//                        else {
                             requireActivity().runOnUiThread(java.lang.Runnable {
                                 Toast.makeText(
                                     requireContext(),
                                     "Hands in Painting!",
-                                    Toast.LENGTH_LONG
+                                    Toast.LENGTH_SHORT
                                 )
                                     .show()
-                                toggleRecording()
+//                                toggleRecording()
                             })
                         }
-                        requireActivity().runOnUiThread(java.lang.Runnable {
-                            // hide loading spinner
-                            loadingView.visibility = View.GONE
-                        })
                     }
 
                 }
