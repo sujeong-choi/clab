@@ -33,14 +33,10 @@ data class PfdResult(
 ) {}
 
 class PFDHelper(val context: Context) {
-    private var commonUtils: CommonUtils
+    private var commonUtils: CommonUtils = CommonUtils(context)
     private val DIM_BATCH_SIZE = 1
     private val DIM_PIXEL_SIZE = 3
-
-    init {
-        // init global objects
-        commonUtils = CommonUtils(context)
-    }
+    private val targetSize: Int = 512
 
     // Read ort model into a ByteArray, run in background
     fun readPfdModel(): ByteArray {
@@ -82,17 +78,17 @@ class PFDHelper(val context: Context) {
         val sortedOutput = mutableMapOf<String, Any>()
 
         // resize bitmap
-        // val resizedBitmap: Bitmap = resizeBitmap(bitmap, 512)
+        val resizedBitmap: Bitmap = resizeBitmap(bitmap, targetSize)
 
         val inputNameIterator = ortSession.inputNames!!.iterator()
         val inputName0: String = inputNameIterator.next()
         val inputName1: String = inputNameIterator.next()
-        val shape = longArrayOf(3, bitmap.height.toLong(), bitmap.width.toLong())
+        val shape = longArrayOf(3, resizedBitmap.height.toLong(), resizedBitmap.width.toLong())
 
 
         val env = GlobalVars.ortEnv
         env.use {
-            val tensor0 = OnnxTensor.createTensor(env, preProcess(bitmap), shape)
+            val tensor0 = OnnxTensor.createTensor(env, preProcess(resizedBitmap), shape)
 
             // send an empty bitmap to avoid extra computation
             val bufferSize = shape.reduce(Long::times).toInt()
@@ -125,13 +121,17 @@ class PFDHelper(val context: Context) {
         }
 
         return if (sortedOutput.isNotEmpty())
-            preprocessOutput(sortedOutput)
+            preprocessOutput(sortedOutput, bitmap.width, bitmap.height)
         else {
             return PfdResult()
         }
     }
 
-    private fun preprocessOutput(modelOutput: MutableMap<String, Any>): PfdResult {
+    private fun preprocessOutput(
+        modelOutput: MutableMap<String, Any>,
+        origWidth: Int,
+        origHeight: Int
+    ): PfdResult {
         // check if scores for both bbox and keypoints
         // filter them by score > 0.8
         val processedOutput = PfdResult()
@@ -162,7 +162,53 @@ class PFDHelper(val context: Context) {
         return processedOutput
     }
 
-    fun resizeBitmap(bitmap: Bitmap, targetImgSize: Int): Bitmap {
+    private fun resizeOutput(
+        pfdResult: PfdResult,
+        origWidth: Int,
+        origHeight: Int
+    ) {
+        // calculate width and height ratio
+        val widthRatio = origWidth.toFloat() / targetSize.toFloat()
+        val heightRatio = origHeight.toFloat() / targetSize.toFloat()
+
+        var bboxes = pfdResult.bbox.value
+        var keypointsList = pfdResult.keypoint.value
+
+        var resizedBbox: MutableList<FloatArray> = mutableListOf()
+        var resizedKeypoints: MutableList<MutableList<FloatArray>> = mutableListOf()
+
+
+        // resize bbox and keypoint
+        for (i in bboxes.indices) {
+            val bbox = bboxes[i]
+            val keypoints = keypointsList[i]
+
+            resizedBbox.add(
+                floatArrayOf(
+                    bbox[0] / widthRatio,
+                    bbox[1] / heightRatio,
+                    bbox[3] / widthRatio,
+                    bbox[4] / heightRatio
+                )
+            )
+
+            val tempKp: MutableList<FloatArray> = mutableListOf()
+
+            for (kp in keypoints) {
+                tempKp.add(
+                    floatArrayOf(
+                        kp[0] / widthRatio,
+                        kp[1] / heightRatio
+                    )
+                )
+            }
+            resizedKeypoints.add(tempKp)
+
+        }
+
+    }
+
+    private fun resizeBitmap(bitmap: Bitmap, targetImgSize: Int): Bitmap {
         // resize bitmap
         return Bitmap.createScaledBitmap(bitmap, targetImgSize, targetImgSize, false)
     }
@@ -225,32 +271,30 @@ class PFDHelper(val context: Context) {
     fun saveVideoFromBitmaps(
         frames: List<Bitmap>
     ) {
-        var file = File(getVideoFilePath() + "timelapse")
+        val file = File(getVideoFilePath("timelapse"))
         file.createNewFile()
 
         var out: FileChannelWrapper? = null
         try {
             out = NIOUtils.writableFileChannel(file.absolutePath)
             val enc =
-                AndroidSequenceEncoder.createSequenceEncoder(file,30)
+                AndroidSequenceEncoder.createSequenceEncoder(file, 2)
 
             for (frame in frames) {
                 enc.encodeImage(frame)
             }
 
             enc.finish()
-        }
-        catch (e: Exception) {
+        } catch (e: Exception) {
             e.message?.let { Log.v("PFD", it) }
         }
     }
 
-    private fun getVideoFilePath(): String {
+    private fun getVideoFilePath(postfix: String = ""): String {
         val dateFormat = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault())
         val currentDateAndTime: String = dateFormat.format(Date())
-        val fileName = "$currentDateAndTime.mp4"
-        val fileDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM)
-//        val fileDir = requireContext().getExternalFilesDir(null)?.absolutePath ?: ""
+        val fileName = "$currentDateAndTime$postfix.mp4"
+        val fileDir = context.filesDir
         return "$fileDir/$fileName"
     }
 

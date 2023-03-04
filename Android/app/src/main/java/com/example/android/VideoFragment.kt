@@ -287,8 +287,6 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                     if (landmarks != null) {
                         globalLandmark = landmarks
                     }
-
-
                 } catch (e: InvalidProtocolBufferException) {
                     Log.e(TAG, "Couldn't Exception received - $e")
                     return@addPacketCallback
@@ -453,6 +451,12 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
             toggleRecording()
 
             if (isRecording) {
+                // recycle bitmaps and clear globalBitmapStore to free memory
+                globalBitmapStore.forEach { bitmap: Bitmap ->
+                    bitmap.recycle()
+                }
+                globalBitmapStore.clear()
+
                 // start video recording
                 // recording thread
                 timelapseThread = thread {
@@ -481,6 +485,12 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                     globalBitmapStore
                 )
 
+                Toast.makeText(
+                    requireContext(),
+                    "Timelapse saved!",
+                    Toast.LENGTH_LONG
+                )
+                    .show()
             }
         }
 
@@ -829,7 +839,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                                 initialCapture = false
 
                                 // add bitmap to global
-                                globalBitmapStore.add(bitmap.copy(bitmap.config, true))
+                                globalBitmapStore.add(transformedBitmap)
 
                                 val plusOne: String =
                                     (frameCounter.text.toString().toInt() + 1).toString()
