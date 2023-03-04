@@ -6,6 +6,7 @@
     <string name="timelapse_fragment_label">Timelapse</string>
     <string name="recording_label">Recording</string>
     <string name="record_label">Record</string>
+    <string name="timelapse_count">0</string>
     <string name="har_label">No Activity</string>
     <string name="detect_label">Detect</string>
     <string name="next">Next</string>

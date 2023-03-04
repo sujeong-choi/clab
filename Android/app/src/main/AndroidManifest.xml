@@ -29,6 +29,7 @@
         <meta-data android:name="binaryGraphName" android:value="pose_world_gpu.binarypb"/>
         <meta-data android:name="inputVideoStreamName" android:value="input_video"/>
         <meta-data android:name="outputVideoStreamName" android:value="input_video"/>
+        <meta-data android:name="outputPresenceName" android:value= "is_pose_landmarks_presence"/>
         <meta-data android:name="outputLandmarksStreamName" android:value="pose_landmarks"/>
         <meta-data android:name="outputLandmarksStreamNameWorld" android:value="pose_world_landmarks"/>
 

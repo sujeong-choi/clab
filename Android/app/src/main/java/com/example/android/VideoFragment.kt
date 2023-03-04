@@ -320,10 +320,11 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
 
     private fun setupOnnxModel() {
         val option = GlobalVars.ortoption
+        option.setIntraOpNumThreads(4)
         option.addNnapi()
 
         pfdSession = GlobalVars.ortEnv.createSession(commonUtils.readModel(ModelType.PFD), option)
-        harSession = GlobalVars.ortEnv.createSession(commonUtils.readModel(ModelType.HAR), option)
+        harSession = GlobalVars.ortEnv.createSession(commonUtils.readModel(ModelType.HAR))
     }
 
     private fun clearHarSkeleton() {

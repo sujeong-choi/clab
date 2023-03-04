@@ -1,23 +1,26 @@
 package com.example.android
 
 import ai.onnxruntime.OnnxTensor
-import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
 import android.content.Context
 import android.graphics.Bitmap
-import android.media.MediaCodec
-import android.media.MediaCodecInfo
-import android.media.MediaFormat
-import android.media.MediaMuxer
+import android.os.Environment
+import android.util.Log
 import com.google.mediapipe.formats.proto.LandmarkProto
+import org.jcodec.api.android.AndroidSequenceEncoder
+import org.jcodec.common.io.FileChannelWrapper
+import org.jcodec.common.io.NIOUtils
 import org.opencv.core.Mat
 import org.opencv.core.MatOfPoint2f
 import org.opencv.core.Size
 import org.opencv.imgproc.Imgproc
-import java.nio.ByteBuffer
+import java.io.File
 import java.nio.FloatBuffer
+import java.text.SimpleDateFormat
+import java.util.*
 import kotlin.math.abs
 import org.opencv.core.Point as CVPoint
+
 
 class KeypointListType(val value: MutableList<MutableList<FloatArray>>)
 
@@ -78,10 +81,14 @@ class PFDHelper(val context: Context) {
         // output object
         val sortedOutput = mutableMapOf<String, Any>()
 
+        // resize bitmap
+        // val resizedBitmap: Bitmap = resizeBitmap(bitmap, 512)
+
         val inputNameIterator = ortSession.inputNames!!.iterator()
         val inputName0: String = inputNameIterator.next()
         val inputName1: String = inputNameIterator.next()
         val shape = longArrayOf(3, bitmap.height.toLong(), bitmap.width.toLong())
+
 
         val env = GlobalVars.ortEnv
         env.use {
@@ -155,6 +162,11 @@ class PFDHelper(val context: Context) {
         return processedOutput
     }
 
+    fun resizeBitmap(bitmap: Bitmap, targetImgSize: Int): Bitmap {
+        // resize bitmap
+        return Bitmap.createScaledBitmap(bitmap, targetImgSize, targetImgSize, false)
+    }
+
     fun isHandInFrame(
         inputFrame: Bitmap,
         bbox: FloatArray,
@@ -171,14 +183,14 @@ class PFDHelper(val context: Context) {
             val poseLandmarks: MutableList<FloatArray> = mutableListOf()
 
             for (landmark in filteredLandmarks) {
-                if (landmark.visibility < 0.85)
+                if (landmark.visibility < 0.5)
                     poseLandmarks.add(
                         floatArrayOf(
                             0f,
                             0f
                         )
                     )
-                else if (landmark.visibility >= 0.85)
+                else if (landmark.visibility >= 0.5)
                     poseLandmarks.add(
                         floatArrayOf(
                             landmark.x * frameWidth,
@@ -199,10 +211,10 @@ class PFDHelper(val context: Context) {
     }
 
     private fun isPointInsideRectangle(point: FloatArray, bbox: FloatArray): Boolean {
-        val topLeftX = bbox[0]
-        val topLeftY = bbox[1]
-        val bottomRightX = bbox[2]
-        val bottomRightY = bbox[3]
+        val topLeftX = bbox[0] - 10
+        val topLeftY = bbox[1] - 10
+        val bottomRightX = bbox[2] + 10
+        val bottomRightY = bbox[3] + 10
 
         val pointX = point[0]
         val pointY = point[1]
@@ -211,63 +223,37 @@ class PFDHelper(val context: Context) {
     }
 
     fun saveVideoFromBitmaps(
-        frames: List<Bitmap>,
-        outputPath: String,
-        width: Int,
-        height: Int,
-        frameRate: Int
+        frames: List<Bitmap>
     ) {
-        val mediaMuxer = MediaMuxer(outputPath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
-        val mediaFormat = MediaFormat.createVideoFormat("video/avc", width, height)
-        mediaFormat.setInteger(
-            MediaFormat.KEY_COLOR_FORMAT,
-            MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface
-        )
-        mediaFormat.setInteger(MediaFormat.KEY_BIT_RATE, 2000000)
-        mediaFormat.setInteger(MediaFormat.KEY_FRAME_RATE, frameRate)
-        mediaFormat.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 5)
-        val trackIndex = mediaMuxer.addTrack(mediaFormat)
-        mediaMuxer.start()
+        var file = File(getVideoFilePath() + "timelapse")
+        file.createNewFile()
 
-        val bufferInfo = MediaCodec.BufferInfo()
-        val encoder = MediaCodec.createEncoderByType("video/avc")
-        encoder.configure(mediaFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
-        val inputSurface = encoder.createInputSurface()
-        inputSurface?.let {
-            encoder.start()
-            val canvas = inputSurface.lockCanvas(null)
-            frames.forEach { bitmap ->
-                canvas.drawBitmap(bitmap, 0f, 0f, null)
-                inputSurface?.let {
-                    val inputBufferId = encoder.dequeueInputBuffer(-1)
-                    if (inputBufferId >= 0) {
-                        val inputBuffer = encoder.getInputBuffer(inputBufferId)
-                        inputBuffer?.let {
-                            it.clear()
-                            val byteBuffer = ByteBuffer.allocate(bitmap.byteCount)
-                            bitmap.copyPixelsToBuffer(byteBuffer)
-                            inputBuffer.put(byteBuffer)
-                            encoder.queueInputBuffer(inputBufferId, 0, byteBuffer.capacity(), 0, 0)
-                        }
-                    }
-                    var outputBufferId = encoder.dequeueOutputBuffer(bufferInfo, 0)
-                    while (outputBufferId >= 0) {
-                        val outputBuffer = encoder.getOutputBuffer(outputBufferId)
-                        outputBuffer?.let {
-                            mediaMuxer.writeSampleData(trackIndex, outputBuffer, bufferInfo)
-                        }
-                        encoder.releaseOutputBuffer(outputBufferId, false)
-                        outputBufferId = encoder.dequeueOutputBuffer(bufferInfo, 0)
-                    }
-                }
+        var out: FileChannelWrapper? = null
+        try {
+            out = NIOUtils.writableFileChannel(file.absolutePath)
+            val enc =
+                AndroidSequenceEncoder.createSequenceEncoder(file,30)
+
+            for (frame in frames) {
+                enc.encodeImage(frame)
             }
-            inputSurface.unlockCanvasAndPost(canvas)
-            encoder.stop()
-            encoder.release()
+
+            enc.finish()
         }
-        mediaMuxer.stop()
-        mediaMuxer.release()
+        catch (e: Exception) {
+            e.message?.let { Log.v("PFD", it) }
+        }
     }
+
+    private fun getVideoFilePath(): String {
+        val dateFormat = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault())
+        val currentDateAndTime: String = dateFormat.format(Date())
+        val fileName = "$currentDateAndTime.mp4"
+        val fileDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM)
+//        val fileDir = requireContext().getExternalFilesDir(null)?.absolutePath ?: ""
+        return "$fileDir/$fileName"
+    }
+
 
     fun perspectiveTransformation(imageBitmap: Bitmap, keyPoints: MutableList<FloatArray>): Bitmap {
         val imgMat = commonUtils.bitmapToMat(imageBitmap)

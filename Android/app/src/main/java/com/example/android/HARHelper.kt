@@ -34,6 +34,7 @@ class HARHelper(val context: Context) {
     private var updatedLabel = 0
     private var updatedVad = 0
     private var vadProb: Float = 0f
+
     // vad variables
     private val vadService by lazy {
         VadService(context)
@@ -57,7 +58,7 @@ class HARHelper(val context: Context) {
             ) { task ->
                 val pose = task.result
 
-                 println(pose.allPoseLandmarks)
+                println(pose.allPoseLandmarks)
 
                 // TODO: HarInference
             }
@@ -65,7 +66,7 @@ class HARHelper(val context: Context) {
 
     fun harInference(inputSkeleton: MultiArray<Float, DN>, harSession: OrtSession): String {
         val shape = longArrayOf(1, 3, 144, 25, 2)
-        val capacity = shape.reduce{acc, s -> acc * s}.toInt()
+        val capacity = shape.reduce { acc, s -> acc * s }.toInt()
 
         val inputNameIterator = harSession.inputNames!!.iterator()
         val inputName0: String = inputNameIterator.next()
@@ -94,7 +95,7 @@ class HARHelper(val context: Context) {
         }
     }
 
-    private fun getLabel(harOutput: FloatArray, vadOutput : Float ): String{
+    private fun getLabel(harOutput: FloatArray, vadOutput: Float): String {
         return try {
             val harOutProb = softmax(harOutput)
             val big3 = arrayOf(
@@ -115,24 +116,24 @@ class HARHelper(val context: Context) {
 
             val isVoiceDetected = if (vadOutput > 0.5f) 1 else 0
 
-            if(updatedVad != isVoiceDetected && isVoiceDetected == previousVad) {
-                updatedVad = isVoiceDetected
-            }
-            previousVad = isVoiceDetected
+           if (updatedVad != isVoiceDetected && isVoiceDetected == previousVad) {
+               updatedVad = isVoiceDetected
+           }
+           previousVad = isVoiceDetected
 
-            if(top1Index==2 && updatedVad==0){
+            if (top1Index == 2 && isVoiceDetected == 0) {
                 top1Index = 0
             }
 
-            if(top1Index!=updatedLabel && top1Index==previousLabel){
-                updatedLabel = top1Index
-            }
-            previousLabel = top1Index
+           if (top1Index != updatedLabel && top1Index == previousLabel) {
+               updatedLabel = top1Index
+           }
+           previousLabel = top1Index
 
-            when (updatedLabel) {
+            when (updatedVad) {
                 0 -> "Other"
-                1 -> "Painting:" + String.format("%.1f", (big3[top1Index] * 100)) + "%"
-                else -> "Interview:" + String.format("%.1f", (big3[top1Index] * 100)) + "%"
+                1 -> "Painting: " + String.format("%.1f", (big3[updatedVad] * 100)) + "%"
+                else -> "Interview: " + String.format("%.1f", (big3[updatedVad] * 100)) + "%"
             }
         } catch (e: Exception) {
             e.message?.let { Log.v("HAR", it) }
@@ -159,10 +160,10 @@ class HARHelper(val context: Context) {
     }
 
     //save skeleton data in one frame and append to (144,25,3) ndarray
-    fun saveSkeletonData(poseLandmarks: LandmarkProto.LandmarkList): D2Array<Float>{
-        var oneFrameSkeleton = mk.d2array(25,3){0.0f}
+    fun saveSkeletonData(poseLandmarks: LandmarkProto.LandmarkList): D2Array<Float> {
+        var oneFrameSkeleton = mk.d2array(25, 3) { 0.0f }
         var landmark = poseLandmarks.landmarkList
-        for(i: Int in 0..24) {
+        for (i: Int in 0..24) {
             if (landmark[i].visibility >= 0.75) {
                 oneFrameSkeleton[i, 0] = landmark[i].x
                 oneFrameSkeleton[i, 1] = landmark[i].y
@@ -174,11 +175,11 @@ class HARHelper(val context: Context) {
 
     fun convertSkeletonData(framesSkeleton: D3Array<Float>): MultiArray<Float, DN> {
         //dummy humman skeleton data to align the input dimension of the model
-        val dummyHumanSkeleton = mk.d3array(144,25,3) {0.0f}
-        val humansSkeleton = mk.stack(framesSkeleton,dummyHumanSkeleton)
+        val dummyHumanSkeleton = mk.d3array(144, 25, 3) { 0.0f }
+        val humansSkeleton = mk.stack(framesSkeleton, dummyHumanSkeleton)
 
         //Transpose for processing in multiInput
-        val transposeSkeleton = humansSkeleton.transpose(3,1,2,0)
+        val transposeSkeleton = humansSkeleton.transpose(3, 1, 2, 0)
 
         return transposeSkeleton.expandDims(axis = 0)
     }

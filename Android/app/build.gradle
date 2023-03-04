@@ -101,4 +101,7 @@ dependencies {
 
     // pytorch for vad
     implementation 'org.pytorch:pytorch_android:1.9.0'
+
+    implementation 'org.jcodec:jcodec:0.2.5'
+    implementation 'org.jcodec:jcodec-android:0.2.5'
 }
