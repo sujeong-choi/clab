@@ -68,7 +68,7 @@ class CommonUtils(val context: Context) {
 
         try {
             // Create a handler thread to offload the processing of the image.
-            val handlerThread = HandlerThread("PixelCopier");
+            val handlerThread = HandlerThread("PixelCopier")
             handlerThread.start();
             PixelCopy.request(
                 view, bitmap,

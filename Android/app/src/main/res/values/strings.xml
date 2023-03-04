@@ -14,7 +14,8 @@
     <string name="previous">Previous</string>
     <string name="upload">Upload</string>
     <string name="live">Live</string>
-    <string name="timelapse">Lapse</string>
+    <string name="timelapse">Timelapse</string>
+    <string name="del_timelapse">Delete Timelapse</string>
     <string name="no_timelapse">No Timelapse</string>
     <string name="no_camera_access">No Camera Access</string>
 </resources>

@@ -43,16 +43,16 @@ class HARHelper(val context: Context) {
         val inputNameIterator = harSession.inputNames!!.iterator()
         val inputName0: String = inputNameIterator.next()
 
-        val bb: ByteBuffer = ByteBuffer.allocateDirect(capacity * 4)
-        bb.order(ByteOrder.nativeOrder())
-        val floatBuffer: FloatBuffer = bb.asFloatBuffer()
-        floatBuffer.put(inputSkeleton.toFloatArray())
-        floatBuffer.position(0)
+
+        val floatArrayData = inputSkeleton.toFloatArray()
+        val buffer = FloatBuffer.allocate(floatArrayData.size)
+        buffer.put(floatArrayData)
+        buffer.flip()
 
         val env = GlobalVars.ortEnv
 
         env.use {
-            val tensor0 = OnnxTensor.createTensor(env, floatBuffer, shape)
+            val tensor0 = OnnxTensor.createTensor(env, buffer, shape)
             val inputMap = mutableMapOf<String, OnnxTensor>()
             inputMap[inputName0] = tensor0
 
@@ -88,24 +88,24 @@ class HARHelper(val context: Context) {
 
             val isVoiceDetected = if (vadOutput > 0.5f) 1 else 0
 
-           if (updatedVad != isVoiceDetected && isVoiceDetected == previousVad) {
-               updatedVad = isVoiceDetected
-           }
-           previousVad = isVoiceDetected
-
+//           if (updatedVad != isVoiceDetected && isVoiceDetected == previousVad) {
+//               updatedVad = isVoiceDetected
+//           }
+//           previousVad = isVoiceDetected
+//
             if (top1Index == 2 && isVoiceDetected == 0) {
                 top1Index = 0
             }
+//
+//           if (top1Index != updatedLabel && top1Index == previousLabel) {
+//               updatedLabel = top1Index
+//           }
+//           previousLabel = top1Index
 
-           if (top1Index != updatedLabel && top1Index == previousLabel) {
-               updatedLabel = top1Index
-           }
-           previousLabel = top1Index
-
-            when (updatedVad) {
+            when (top1Index) {
                 0 -> "Other"
-                1 -> "Painting: " + String.format("%.1f", (big3[updatedVad] * 100)) + "%"
-                else -> "Interview: " + String.format("%.1f", (big3[updatedVad] * 100)) + "%"
+                1 -> "Painting: " + String.format("%.1f", (big3[top1Index] * 100)) + "%"
+                else -> "Interview: " + String.format("%.1f", (big3[top1Index] * 100)) + "%"
             }
         } catch (e: Exception) {
             e.message?.let { Log.v("HAR", it) }

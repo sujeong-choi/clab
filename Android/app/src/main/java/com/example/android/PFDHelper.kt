@@ -5,6 +5,7 @@ import ai.onnxruntime.OrtSession
 import android.content.Context
 import android.graphics.Bitmap
 import android.os.Environment
+import android.os.HandlerThread
 import android.util.Log
 import com.google.mediapipe.formats.proto.LandmarkProto
 import org.jcodec.api.android.AndroidSequenceEncoder
@@ -18,6 +19,7 @@ import java.io.File
 import java.nio.FloatBuffer
 import java.text.SimpleDateFormat
 import java.util.*
+import kotlin.concurrent.thread
 import kotlin.math.abs
 import org.opencv.core.Point as CVPoint
 
@@ -258,10 +260,10 @@ class PFDHelper(val context: Context) {
     }
 
     private fun isPointInsideRectangle(point: FloatArray, bbox: FloatArray): Boolean {
-        val topLeftX = bbox[0] - 10
-        val topLeftY = bbox[1] - 10
-        val bottomRightX = bbox[2] + 10
-        val bottomRightY = bbox[3] + 10
+        val topLeftX = bbox[0]
+        val topLeftY = bbox[1]
+        val bottomRightX = bbox[2]
+        val bottomRightY = bbox[3]
 
         val pointX = point[0]
         val pointY = point[1]
@@ -270,25 +272,36 @@ class PFDHelper(val context: Context) {
     }
 
     fun saveVideoFromBitmaps(
-        frames: List<Bitmap>
+        frames: List<Bitmap>,
+        fps: Int
     ) {
         val file = File(getVideoFilePath("timelapse"))
-        file.createNewFile()
+//        file.createNewFile()
 
         var out: FileChannelWrapper? = null
-        try {
-            out = NIOUtils.writableFileChannel(file.absolutePath)
-            val enc =
-                AndroidSequenceEncoder.createSequenceEncoder(file, 2)
 
-            for (frame in frames) {
-                enc.encodeImage(frame)
+        var tlWidth = frames[0].width
+        var tlHeight = if(frames[0].height % 2 == 0) frames[0].height else frames[0].height - 1
+
+        val timelapseSaveThread = thread {
+            try {
+                out = NIOUtils.writableFileChannel(file.absolutePath)
+                val enc =
+                    AndroidSequenceEncoder.createSequenceEncoder(file, fps)
+
+                for (frame in frames) {
+                    val resizedBitmap = Bitmap.createScaledBitmap(frame, tlWidth, tlHeight, false)
+                    enc.encodeImage(resizedBitmap)
+                }
+
+                enc.finish()
+            } catch (e: Exception) {
+                e.message?.let { Log.v("PFD", it) }
+            } finally {
+                NIOUtils.closeQuietly(out)
             }
-
-            enc.finish()
-        } catch (e: Exception) {
-            e.message?.let { Log.v("PFD", it) }
         }
+        timelapseSaveThread.join()
     }
 
     private fun getVideoFilePath(postfix: String = ""): String {
