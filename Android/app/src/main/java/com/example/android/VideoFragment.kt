@@ -195,6 +195,9 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
         // allow dragging for android
         setupDraggablePreview()
 
+        // disable record button until painting is detected
+        recordButton.isEnabled = false
+
         // init video views
         mediaController = CustomMediaController(activity)
 
@@ -249,18 +252,9 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                         frameCount++
                     } else {
                         commonUtils.getFrameBitmap(previewDisplayView) { bitmap: Bitmap? ->
-                            if (!pfdHelper.isHandInFrame(
-                                    bitmap!!,
-                                    globalPfdResult.bbox.value[0],
-                                    globalLandmark
-                                )
-                            ) {
-                                // update preview screen if hand isn't in frame
-                                drawPreview(globalPfdResult)
-
-                                // add bitmap to global
-//                                globalBitmapStore.plus(bitmap.copy(bitmap.config, true))
-                            }
+                            // update preview screen if hand isn't in frame
+                            drawPreview(globalPfdResult)
+                            bitmap?.recycle()
                         }
 
 
@@ -467,13 +461,18 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
 
             if (isRecording) {
                 // start video recording
-
                 drawPreview(globalPfdResult)
             } else {
                 // stop video recording
 
                 // save timelapse
-//                pfdHelper.saveVideoFromBitmaps(globalBitmapStore, "/", globalBitmapStore[0].width, globalBitmapStore[0].width, 30)
+                pfdHelper.saveVideoFromBitmaps(
+                    globalBitmapStore,
+                    "/",
+                    globalBitmapStore[0].width,
+                    globalBitmapStore[0].width,
+                    30
+                )
 
             }
         }
@@ -504,6 +503,10 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
 
                         // draw keyPoints on top of previewView
                         drawKeypoints(globalPfdResult)
+
+                        requireActivity().runOnUiThread(java.lang.Runnable {
+                            recordButton.isEnabled = true
+                        })
 
                     } else {
                         Toast.makeText(
@@ -801,7 +804,9 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                         )
 
                         // perform perspective transformation and show image on previewViewSmall
-                        if (!isHandInFrame && (recordingState == "Painting" || initialCapture)) {
+                        // TODO: Replace this if condition when har is more accurate
+//                        if (!isHandInFrame && (recordingState == "Painting" || initialCapture)) {
+                        if (!isHandInFrame) {
                             requireActivity().runOnUiThread(java.lang.Runnable {
                                 val transformedBitmap = bitmap.let {
                                     pfdHelper.perspectiveTransformation(
@@ -814,6 +819,9 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                                 previewViewSmall.invalidate()
 
                                 initialCapture = false
+
+                                // add bitmap to global
+                                globalBitmapStore.plus(bitmap.copy(bitmap.config, true))
 
                             })
                         } else if (isHandInFrame && recordingState == "Painting") {
