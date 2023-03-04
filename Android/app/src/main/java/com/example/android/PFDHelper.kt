@@ -159,14 +159,16 @@ class PFDHelper(val context: Context) {
 
         processedOutput.size = size
 
-        return processedOutput
+        return resizeOutput(processedOutput, origWidth, origHeight)
     }
 
     private fun resizeOutput(
         pfdResult: PfdResult,
         origWidth: Int,
         origHeight: Int
-    ) {
+    ): PfdResult {
+        val resizedOutput = PfdResult()
+
         // calculate width and height ratio
         val widthRatio = origWidth.toFloat() / targetSize.toFloat()
         val heightRatio = origHeight.toFloat() / targetSize.toFloat()
@@ -174,21 +176,18 @@ class PFDHelper(val context: Context) {
         var bboxes = pfdResult.bbox.value
         var keypointsList = pfdResult.keypoint.value
 
-        var resizedBbox: MutableList<FloatArray> = mutableListOf()
-        var resizedKeypoints: MutableList<MutableList<FloatArray>> = mutableListOf()
-
 
         // resize bbox and keypoint
         for (i in bboxes.indices) {
             val bbox = bboxes[i]
             val keypoints = keypointsList[i]
 
-            resizedBbox.add(
+            resizedOutput.bbox.value.add(
                 floatArrayOf(
-                    bbox[0] / widthRatio,
-                    bbox[1] / heightRatio,
-                    bbox[3] / widthRatio,
-                    bbox[4] / heightRatio
+                    bbox[0] * widthRatio,
+                    bbox[1] * heightRatio,
+                    bbox[2] * widthRatio,
+                    bbox[3] * heightRatio
                 )
             )
 
@@ -197,15 +196,17 @@ class PFDHelper(val context: Context) {
             for (kp in keypoints) {
                 tempKp.add(
                     floatArrayOf(
-                        kp[0] / widthRatio,
-                        kp[1] / heightRatio
+                        kp[0] * widthRatio,
+                        kp[1] * heightRatio
                     )
                 )
             }
-            resizedKeypoints.add(tempKp)
-
+            resizedOutput.keypoint.value.add(tempKp)
         }
 
+        resizedOutput.size = pfdResult.size
+
+        return resizedOutput
     }
 
     private fun resizeBitmap(bitmap: Bitmap, targetImgSize: Int): Bitmap {
