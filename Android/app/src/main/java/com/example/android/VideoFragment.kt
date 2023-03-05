@@ -8,13 +8,13 @@ import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.graphics.Color
 import android.graphics.SurfaceTexture
 import android.media.MediaMetadataRetriever
 import android.media.MediaRecorder
 import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
-import android.os.SystemClock
 import android.util.AttributeSet
 import android.util.Log
 import android.util.Size
@@ -50,7 +50,6 @@ import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.Executor
 import java.util.concurrent.Executors
-import kotlin.collections.ArrayList
 import kotlin.concurrent.fixedRateTimer
 import kotlin.concurrent.thread
 
@@ -108,6 +107,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
     // class variables
     private var isLoading: Boolean = false
     private var isRecording: Boolean = false
+    private var isNnapiAdded: Boolean = false
     private var isKeypointSelected: Boolean = false
     private var isCameraFacingFront: Boolean = false
     private var enableHarInference: Boolean = false
@@ -115,7 +115,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
     private var globalPfdResult: PfdResult = PfdResult()
     private var globalLandmark: NormalizedLandmarkList? = null
     private var globalBitmapStore: MutableList<Bitmap> = mutableListOf()
-    private var recordingState: String = "Painting"
+    private var recordingState: String = "No Activity"
     private var previewSize: Size? = null
     private var timelapseFps: Int = 30
     private var skeletonBuffer = ArrayList<D2Array<Float>>()
@@ -302,10 +302,16 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
     private fun setupOnnxModel() {
         val option = GlobalVars.ortoption
         option.setIntraOpNumThreads(4)
-        option.addNnapi()
 
-        pfdSession = GlobalVars.ortEnv.createSession(commonUtils.readModel(ModelType.PFD), option)
-        harSession = GlobalVars.ortEnv.createSession(commonUtils.readModel(ModelType.HAR))
+        if (!isNnapiAdded) {
+            option.addNnapi()
+            isNnapiAdded = true
+        }
+        if (!::pfdSession.isInitialized)
+            pfdSession =
+                GlobalVars.ortEnv.createSession(commonUtils.readModel(ModelType.PFD), option)
+        if (!::harSession.isInitialized)
+            harSession = GlobalVars.ortEnv.createSession(commonUtils.readModel(ModelType.HAR))
     }
 
     private fun getSkeleton() {
@@ -318,13 +324,24 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
             val input = harHelper.convertSkeletonData(curSkeletonBuffer)
             val label: String = harHelper.harInference(input, harSession)
 
-//            if (label.contains("Other")) recordingState = "Other"
-//            else if (label.contains("Painting")) recordingState = "Painting"
-//            else if (label.contains("Interview")) recordingState = "Interview"
-
             requireActivity().runOnUiThread(java.lang.Runnable {
-                harLabel.text = label
+                toggleHarLabel(label)
             })
+        }
+    }
+
+    private fun toggleHarLabel(label: String) {
+        harLabel.text = label
+        if (label.contains("Painting")) {
+            harLabel.setTextColor(Color.RED)
+            recordingState = "Painting"
+        }
+        else if (label.contains("Interview")) {
+            harLabel.setTextColor(Color.GREEN)
+            recordingState = "Interview"
+        }
+        else {
+            recordingState = "No Activity"
         }
     }
 
@@ -431,17 +448,6 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
             harHelper.vadInference()
         }
 
-        // live button listeners
-        binding.liveButton.setOnClickListener {
-            videoView.stopPlayback()
-            timeLapseView.stopPlayback()
-
-            videoView.visibility = View.GONE
-            timeLapseView.visibility = View.GONE
-            previewView.visibility = View.VISIBLE
-            previewViewSmall.visibility = View.VISIBLE
-        }
-
         // live start and stop on click listeners
         recordButton.setOnClickListener {
             rectOverlay.clear()
@@ -450,7 +456,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
             if (isRecording) {
                 // recycle bitmaps and clear globalBitmapStore to free memory
                 globalBitmapStore.forEach { bitmap: Bitmap ->
-//                    bitmap.recycle()
+                    bitmap.recycle()
                 }
                 globalBitmapStore.clear()
 
@@ -460,8 +466,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                     while (isRecording) {
                         commonUtils.getFrameBitmap(previewDisplayView) { bitmap: Bitmap? ->
                             // update preview screen if hand isn't in frame
-                            drawPreview(globalPfdResult, bitmap!!)
-//                            bitmap?.recycle()
+                            drawPreview(globalPfdResult, globalLandmark!!, bitmap!!)
                         }
                         Thread.sleep(1000)
                     }
@@ -552,6 +557,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
 
     override fun onResume() {
         super.onResume()
+
         converter = ExternalTextureConverter(
             eglManager.context, 2
         )
@@ -566,17 +572,20 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                 REQUEST_CODE_PERMISSION
             )
         } else {
-//            previewFrameTexture.release()
             startCamera()
         }
     }
 
     override fun onPause() {
         super.onPause()
-        converter.close()
-
-        // Hide preview display until we re-open the camera again.
-        previewDisplayView.visibility = View.GONE
+        try {
+            if (::converter.isInitialized) converter.close()
+            previewFrameTexture.release()
+//            previewFrameTexture.detachFromGLContext()
+        } catch (e: java.lang.Exception) {
+            e.printStackTrace()
+        }
+        timelapseThread?.join()
     }
 
     private fun toggleLoading() {
@@ -676,13 +685,6 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                 })
 
     }
-
-//    private fun createVideoFile(): File {
-//        val videoFileName =
-//            "VIDEO_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())}.mp4"
-//        val storageDir = requireContext().getExternalFilesDirs(Environment.DIRECTORY_MOVIES)
-//        return File(storageDir, videoFileName)
-//    }
 
     @ExperimentalGetImage
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
@@ -806,12 +808,11 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
         val currentDateAndTime: String = dateFormat.format(Date())
         val fileName = "$currentDateAndTime.mp4"
         val fileDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM)
-//        val fileDir = requireContext().getExternalFilesDir(null)?.absolutePath ?: ""
         return "$fileDir/$fileName"
     }
 
 
-    private fun drawPreview(pfdResult: PfdResult, bitmap: Bitmap) {
+    private fun drawPreview(pfdResult: PfdResult, localLandmark: NormalizedLandmarkList, bitmap: Bitmap) {
         previewView.post {
             try {
                 val keyPoints = pfdResult.keypoint.value
@@ -822,13 +823,12 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                         .show()
                 } else {
                     val isHandInFrame = pfdHelper.isHandInFrame(
-                        bitmap!!,
+                        bitmap,
                         globalPfdResult.bbox.value[0],
-                        globalLandmark
+                        localLandmark
                     )
 
                     // perform perspective transformation and show image on previewViewSmall
-                    // TODO: Replace this if condition when har is more accurate
                     if (!isHandInFrame && (recordingState == "Painting" || initialCapture)) {
                         requireActivity().runOnUiThread(java.lang.Runnable {
                             val transformedBitmap = bitmap.let {
@@ -890,9 +890,11 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
     override fun onDestroy() {
         super.onDestroy()
 
-//        pfdSession.close()
-//        harSession.close()
-//        pfdHelper.destroyModel()
-//        harHelper.destroyModel()
+//        converter.close()
+
+        // Hide preview display until we re-open the camera again.
+//        previewDisplayView.visibility = View.GONE
+        pfdHelper.destroyModel()
+        harHelper.destroyModel()
     }
 }

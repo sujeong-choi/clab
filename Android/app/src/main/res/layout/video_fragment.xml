@@ -15,21 +15,9 @@
         android:paddingRight="16dp">
 
         <Button
-            android:id="@+id/liveButton"
-            android:layout_width="150dp"
-            android:layout_height="50dp"
-            android:layout_gravity="bottom|center_horizontal"
-            android:text="@string/live"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintTop_toBottomOf="@+id/timelapseButton"
-            app:layout_constraintVertical_bias="0.358" />
-
-        <Button
             android:id="@+id/timelapseButton"
             android:layout_width="150dp"
             android:layout_height="50dp"
-            android:layout_marginStart="40dp"
             android:layout_gravity="bottom|center_horizontal"
             android:text="@string/timelapse"
             app:layout_constraintEnd_toEndOf="parent"
@@ -120,10 +108,8 @@
             android:layout_gravity="end"
             android:layout_marginTop="70dp"
             android:layout_marginEnd="20dp"
-            android:alpha="0.8"
-            android:background="#80000000"
             android:padding="16dp"
-            android:text="@string/har_label"
+            android:text=""
             android:textColor="#ffffff"
             android:textSize="15sp"
             android:textStyle="bold"

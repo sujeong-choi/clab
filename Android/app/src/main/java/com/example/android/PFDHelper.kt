@@ -259,11 +259,11 @@ class PFDHelper(val context: Context) {
         return false
     }
 
-    private fun isPointInsideRectangle(point: FloatArray, bbox: FloatArray): Boolean {
-        val topLeftX = bbox[0]
-        val topLeftY = bbox[1]
-        val bottomRightX = bbox[2]
-        val bottomRightY = bbox[3]
+    private fun isPointInsideRectangle(point: FloatArray, bbox: FloatArray, bufferZone: Int = 10): Boolean {
+        val topLeftX = bbox[0] - bufferZone
+        val topLeftY = bbox[1] - bufferZone
+        val bottomRightX = bbox[2] + bufferZone
+        val bottomRightY = bbox[3] + bufferZone
 
         val pointX = point[0]
         val pointY = point[1]
@@ -276,11 +276,9 @@ class PFDHelper(val context: Context) {
         fps: Int
     ) {
         val file = File(getVideoFilePath("timelapse"))
-//        file.createNewFile()
-
         var out: FileChannelWrapper? = null
 
-        var tlWidth = frames[0].width
+        var tlWidth = if(frames[0].width % 2 == 0) frames[0].width else frames[0].width - 1
         var tlHeight = if(frames[0].height % 2 == 0) frames[0].height else frames[0].height - 1
 
         val timelapseSaveThread = thread {
@@ -295,6 +293,7 @@ class PFDHelper(val context: Context) {
                 }
 
                 enc.finish()
+                Log.v("PFD", "Timelapse saved for: ${frames.size} frames")
             } catch (e: Exception) {
                 e.message?.let { Log.v("PFD", it) }
             } finally {

@@ -4,15 +4,14 @@ import ai.onnxruntime.OnnxTensor
 import ai.onnxruntime.OrtSession
 import android.content.Context
 import android.util.Log
-import com.google.common.math.DoubleMath
 import com.google.mediapipe.formats.proto.LandmarkProto
 import org.jetbrains.kotlinx.multik.api.d2array
 import org.jetbrains.kotlinx.multik.api.d3array
 import org.jetbrains.kotlinx.multik.api.mk
 import org.jetbrains.kotlinx.multik.ndarray.data.*
-import org.jetbrains.kotlinx.multik.ndarray.operations.*
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
+import org.jetbrains.kotlinx.multik.ndarray.operations.expandDims
+import org.jetbrains.kotlinx.multik.ndarray.operations.stack
+import org.jetbrains.kotlinx.multik.ndarray.operations.toFloatArray
 import java.nio.FloatBuffer
 import java.util.concurrent.Executor
 import java.util.concurrent.Executors
@@ -88,22 +87,12 @@ class HARHelper(val context: Context) {
 
             val isVoiceDetected = if (vadOutput > 0.5f) 1 else 0
 
-//           if (updatedVad != isVoiceDetected && isVoiceDetected == previousVad) {
-//               updatedVad = isVoiceDetected
-//           }
-//           previousVad = isVoiceDetected
-//
             if (top1Index == 2 && isVoiceDetected == 0) {
                 top1Index = 0
             }
-//
-//           if (top1Index != updatedLabel && top1Index == previousLabel) {
-//               updatedLabel = top1Index
-//           }
-//           previousLabel = top1Index
 
             when (top1Index) {
-                0 -> "Other"
+                0 -> " "
                 1 -> "Painting: " + String.format("%.1f", (big3[top1Index] * 100)) + "%"
                 else -> "Interview: " + String.format("%.1f", (big3[top1Index] * 100)) + "%"
             }

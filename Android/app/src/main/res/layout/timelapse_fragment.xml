@@ -22,12 +22,11 @@
         android:visibility="gone">
 
         <TextView
-
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:gravity="center"
             android:textColor="#2e2e2e"
-            android:text="@+string/no_timelapse"
+            android:text="@string/no_timelapse"
             android:padding="16dp"
             android:textSize="20sp" />
     </FrameLayout>
