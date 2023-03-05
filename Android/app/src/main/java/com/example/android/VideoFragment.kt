@@ -616,7 +616,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
 //            enableHarInference = true
 
             // disable detect button while recording
-            detectButton.isEnabled = false
+//            detectButton.isEnabled = false
 
             // start vad prediction
             harHelper.vadInference()
