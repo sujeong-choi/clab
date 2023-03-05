@@ -216,10 +216,10 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
 //        videoFile = createVideoFile()
 
         //create skeleton HAR timer
-        val skeletonTimer =
-            fixedRateTimer(name = "SkeletonTimer", initialDelay = 0L, period = 4000L) {
+//        val skeletonTimer =
+//            fixedRateTimer(name = "SkeletonTimer", initialDelay = 0L, period = 4000L) {
 //                getSkeleton()
-            }
+//            }
 
         harListenableLabel.observe(viewLifecycleOwner) { it ->
             toggleHarLabel(it)
@@ -482,9 +482,6 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                 // stop timelapse thread
                 timelapseThread?.join()
 
-                // reset har label
-                harLabel.text = "No Activity"
-
                 // save timelapse
                 if (globalBitmapStore.size > timelapseFps) {
                     pfdHelper.saveVideoFromBitmaps(
@@ -498,9 +495,6 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                         Toast.LENGTH_SHORT
                     )
                         .show()
-                    globalBitmapStore.forEach { bitmap: Bitmap ->
-                        bitmap.recycle()
-                    }
                     globalBitmapStore.clear()
                 } else {
                     Toast.makeText(
