@@ -60,10 +60,7 @@ class HARHelper(val context: Context) {
 
             val predictionArray: FloatArray = FloatArray(prediction.floatBuffer.remaining())
             prediction.floatBuffer.get(predictionArray)
-            buffer.clear()
-            tensor0.close()
-            inputMap.clear()
-            prediction.close()
+
             return getLabel(predictionArray, vadProb)
         }
     }
@@ -93,7 +90,7 @@ class HARHelper(val context: Context) {
                 top1Index = 0
             }
 
-            if (updatedLabel!=top1Index && previousLabel==top1Index)
+            if (updatedLabel != top1Index && previousLabel == top1Index)
                 updatedLabel = top1Index
             previousLabel = top1Index
 
@@ -142,32 +139,25 @@ class HARHelper(val context: Context) {
         return oneFrameSkeleton
     }
 
-    private fun sampleSkeletonData(skeletonBuffer: ArrayList<D2Array<Float>>):D3Array<Float>{
+    private fun sampleSkeletonData(skeletonBuffer: ArrayList<D2Array<Float>>): D3Array<Float> {
         val framesSkeleton = mk.d3array(144, 25, 3) { 0.0f }
         val frameNum = skeletonBuffer.size
 
-        if(frameNum>=60) {
+        if (frameNum >= 60) {
             val skipInterval = frameNum / 60.0
             for (i in 0 until 60)
                 framesSkeleton[i] = skeletonBuffer[(i * skipInterval).toInt()]
-        }
-        else
-            for(i in 0 until frameNum)
+        } else
+            for (i in 0 until frameNum)
                 framesSkeleton[i] = skeletonBuffer[i]
         return framesSkeleton
     }
 
     fun convertSkeletonData(skeletonBuffer: ArrayList<D2Array<Float>>): MultiArray<Float, DN> {
-
-        val framesSkeleton = sampleSkeletonData(skeletonBuffer)
         //dummy humman skeleton data to align the input dimension of the model
-        val dummyHumanSkeleton = mk.d3array(144, 25, 3) { 0.0f }
-        val humansSkeleton = mk.stack(framesSkeleton, dummyHumanSkeleton)
-
-        //Transpose for processing in multiInput
-        val transposeSkeleton = humansSkeleton.transpose(3, 1, 2, 0)
-
-        return transposeSkeleton.expandDims(axis = 0)
+        val humansSkeleton =
+            mk.stack(sampleSkeletonData(skeletonBuffer), mk.d3array(144, 25, 3) { 0.0f })
+        return humansSkeleton.transpose(3, 1, 2, 0).expandDims(axis = 0)
     }
 
     private val recognitionListener = object : RecognitionListener {

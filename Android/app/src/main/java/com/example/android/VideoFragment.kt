@@ -115,7 +115,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
     private var globalPfdResult: PfdResult = PfdResult()
     private var globalLandmark: NormalizedLandmarkList? = null
     private var globalBitmapStore: MutableList<Bitmap> = mutableListOf()
-    private var recordingState: String = "No Activity"
+    private var recordingState: String = "Painting"
     private var previewSize: Size? = null
     private var timelapseFps: Int = 30
     private var skeletonBuffer = ArrayList<D2Array<Float>>()
@@ -256,12 +256,8 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
             processor.addPacketCallback(
                 applicationInfo.metaData.getString("outputLandmarksStreamNameWorld")
             ) { packet: Packet ->
-                val landmarksRaw: ByteArray = PacketGetter.getProtoBytes(packet)
-                val poseLandmarks: LandmarkProto.LandmarkList =
-                    LandmarkProto.LandmarkList.parseFrom(landmarksRaw)
-
                 if (enableHarInference)
-                    skeletonBuffer.add(harHelper.saveSkeletonData(poseLandmarks))
+                    skeletonBuffer.add(harHelper.saveSkeletonData( LandmarkProto.LandmarkList.parseFrom(PacketGetter.getProtoBytes(packet))))
             }
 
             processor.addPacketCallback(
@@ -269,11 +265,10 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
             ) { packet: Packet ->
                 val landmarksRaw = PacketGetter.getProtoBytes(packet)
                 try {
-                    val landmarks = NormalizedLandmarkList.parseFrom(landmarksRaw)
-
-                    if (landmarks != null) {
-                        globalLandmark = landmarks
+                    if (NormalizedLandmarkList.parseFrom(landmarksRaw) != null) {
+                        globalLandmark = NormalizedLandmarkList.parseFrom(landmarksRaw)
                     }
+
                 } catch (e: InvalidProtocolBufferException) {
                     Log.e(TAG, "Couldn't Exception received - $e")
                     return@addPacketCallback
@@ -305,7 +300,8 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
 
     private fun setupOnnxModel() {
         val option = GlobalVars.ortoption
-        option.setIntraOpNumThreads(4)
+        option.setIntraOpNumThreads(2)
+        option.setExecutionMode(OrtSession.SessionOptions.ExecutionMode.PARALLEL)
 
         if (!isNnapiAdded) {
             option.addNnapi()
@@ -314,23 +310,19 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
         if (!::pfdSession.isInitialized)
             pfdSession =
                 GlobalVars.ortEnv.createSession(commonUtils.readModel(ModelType.PFD), option)
-        if (!::harSession.isInitialized)
-            harSession = GlobalVars.ortEnv.createSession(commonUtils.readModel(ModelType.HAR))
     }
 
     private fun getSkeleton() {
         if (enableHarInference) {
-            //for fast refreshing
-            val curSkeletonBuffer = ArrayList<D2Array<Float>>()
-            curSkeletonBuffer.addAll(skeletonBuffer)
+            val input = harHelper.convertSkeletonData(skeletonBuffer)
+            val label: String = harHelper.harInference(input, harSession)
             skeletonBuffer.clear()
 
-            val input = harHelper.convertSkeletonData(curSkeletonBuffer)
-            val label: String = harHelper.harInference(input, harSession)
+            Log.v("HAR", label)
 
-            requireActivity().runOnUiThread(java.lang.Runnable {
-                toggleHarLabel(label)
-            })
+//            requireActivity().runOnUiThread(java.lang.Runnable {
+//                toggleHarLabel(label)
+//            })
         }
     }
 
@@ -471,7 +463,22 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                 }
 
                 pfdSession.close()
+                System.gc()
 
+                val option = GlobalVars.ortoption
+                option.setIntraOpNumThreads(2)
+                option.setExecutionMode(OrtSession.SessionOptions.ExecutionMode.PARALLEL)
+
+                if (!isNnapiAdded) {
+                    option.addNnapi()
+                    isNnapiAdded = true
+                }
+
+                if (!::harSession.isInitialized)
+                    harSession = GlobalVars.ortEnv.createSession(commonUtils.readModel(ModelType.HAR), option)
+
+                // start HAR inference
+                enableHarInference = true
 //                drawPreview(globalPfdResult)
             } else {
                 // stop video recording
@@ -611,9 +618,6 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
 
             // disable detect button while recording
             detectButton.isEnabled = false
-
-            // start HAR inference
-            enableHarInference = true
 
             // start vad prediction
             harHelper.vadInference()
