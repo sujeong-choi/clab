@@ -15,6 +15,10 @@ android {
         versionName "1.0"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+
+        ndk {
+            abiFilters "armeabi-v7a", "x86", "armeabi", "mips"
+        }
     }
 
     buildTypes {
@@ -75,19 +79,8 @@ dependencies {
     implementation "androidx.camera:camera-view:$camerax_version"
     implementation "androidx.camera:camera-extensions:$camerax_version"
 
-    // MLKit Deps
-    implementation 'com.google.mlkit:pose-detection:18.0.0-beta3'
-
-    // Tensorflow Lite dependencies
-    implementation 'org.tensorflow:tensorflow-lite:2.10.0'
-    implementation 'org.tensorflow:tensorflow-lite-select-tf-ops:2.3.0'
-    implementation 'org.tensorflow:tensorflow-lite-metadata:0.1.0'
-    implementation 'org.tensorflow:tensorflow-lite-task-vision-play-services:0.4.2'
-    implementation 'org.tensorflow:tensorflow-lite-gpu-delegate-plugin:0.4.0'
-    implementation 'org.tensorflow:tensorflow-lite-gpu:2.10.0'
-
     // MediaPipe deps
-    implementation fileTree(dir: 'F:/Workspace/clab/Android/app/libs', include: ['*.aar', '*.jar'], exclude: [])
+    implementation fileTree(dir: '/libs')
     implementation 'com.google.flogger:flogger:0.3.1'
     implementation 'com.google.flogger:flogger-system-backend:0.3.1'
     implementation 'com.google.code.findbugs:jsr305:3.0.2'

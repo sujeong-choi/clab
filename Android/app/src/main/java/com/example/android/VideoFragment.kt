@@ -221,6 +221,10 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
     }
 
     private fun initMediaPipe() {
+        if(::processor.isInitialized) {
+            processor.close()
+        }
+
         previewDisplayView = SurfaceView(requireContext())
         setupPreviewDisplayView()
 
@@ -301,12 +305,12 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
 
     private fun setupOnnxModel() {
         val option = GlobalVars.ortoption
-        option.setIntraOpNumThreads(4)
+//        option.setIntraOpNumThreads(4)
 
-        if (!isNnapiAdded) {
-            option.addNnapi()
-            isNnapiAdded = true
-        }
+//        if (!isNnapiAdded) {
+//            o\ption.addNnapi()
+//            isNnapiAdded = true
+//        }
         if (!::pfdSession.isInitialized)
             pfdSession =
                 GlobalVars.ortEnv.createSession(commonUtils.readModel(ModelType.PFD), option)
@@ -335,12 +339,10 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
         if (label.contains("Painting")) {
             harLabel.setTextColor(Color.RED)
             recordingState = "Painting"
-        }
-        else if (label.contains("Interview")) {
+        } else if (label.contains("Interview")) {
             harLabel.setTextColor(Color.GREEN)
             recordingState = "Interview"
-        }
-        else {
+        } else {
             recordingState = "No Activity"
         }
     }
@@ -466,7 +468,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                     while (isRecording) {
                         commonUtils.getFrameBitmap(previewDisplayView) { bitmap: Bitmap? ->
                             // update preview screen if hand isn't in frame
-                            drawPreview(globalPfdResult, globalLandmark!!, bitmap!!)
+                            drawPreview(globalPfdResult, globalLandmark, bitmap)
                         }
                         Thread.sleep(1000)
                     }
@@ -498,7 +500,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                 } else {
                     Toast.makeText(
                         requireContext(),
-                        "No frames detected!",
+                        "Not enough frames detected!",
                         Toast.LENGTH_SHORT
                     )
                         .show()
@@ -581,7 +583,6 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
         try {
             if (::converter.isInitialized) converter.close()
             previewFrameTexture.release()
-//            previewFrameTexture.detachFromGLContext()
         } catch (e: java.lang.Exception) {
             e.printStackTrace()
         }
@@ -812,13 +813,17 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
     }
 
 
-    private fun drawPreview(pfdResult: PfdResult, localLandmark: NormalizedLandmarkList, bitmap: Bitmap) {
+    private fun drawPreview(
+        pfdResult: PfdResult,
+        localLandmark: NormalizedLandmarkList?,
+        bitmap: Bitmap?
+    ) {
         previewView.post {
             try {
                 val keyPoints = pfdResult.keypoint.value
                 val bbox = pfdResult.bbox.value
 
-                if (keyPoints.isEmpty()) {
+                if (keyPoints.isEmpty() || bitmap == null || localLandmark == null) {
                     Toast.makeText(requireContext(), "Painting not detected!", Toast.LENGTH_LONG)
                         .show()
                 } else {

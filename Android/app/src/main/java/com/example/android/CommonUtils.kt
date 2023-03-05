@@ -64,12 +64,12 @@ class CommonUtils(val context: Context) {
             view.width,
             view.height,
             Bitmap.Config.ARGB_8888
-        );
+        )
 
         try {
             // Create a handler thread to offload the processing of the image.
             val handlerThread = HandlerThread("PixelCopier")
-            handlerThread.start();
+            handlerThread.start()
             PixelCopy.request(
                 view, bitmap,
                 PixelCopy.OnPixelCopyFinishedListener { copyResult ->
