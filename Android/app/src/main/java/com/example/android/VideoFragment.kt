@@ -117,7 +117,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
     private var globalPfdResult: PfdResult = PfdResult()
     private var globalLandmark: NormalizedLandmarkList? = null
     private var globalBitmapStore: MutableList<Bitmap> = mutableListOf()
-    private var recordingState: String = "No Activity"
+    private var recordingState: String = "Painting"
     private var previewSize: Size? = null
     private var timelapseFps: Int = 30
     private var skeletonBuffer = ArrayList<D2Array<Float>>()
@@ -218,7 +218,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
         //create skeleton HAR timer
         val skeletonTimer =
             fixedRateTimer(name = "SkeletonTimer", initialDelay = 0L, period = 4000L) {
-                getSkeleton()
+//                getSkeleton()
             }
 
         harListenableLabel.observe(viewLifecycleOwner) { it ->
@@ -472,7 +472,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                             // update preview screen if hand isn't in frame
                             drawPreview(globalPfdResult, globalLandmark, bitmap)
                         }
-                        Thread.sleep(3000)
+                        Thread.sleep(1000)
                     }
                 }
 //                drawPreview(globalPfdResult)
