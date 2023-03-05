@@ -221,7 +221,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
     }
 
     private fun initMediaPipe() {
-        if(::processor.isInitialized) {
+        if (::processor.isInitialized) {
             processor.close()
         }
 
@@ -305,12 +305,12 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
 
     private fun setupOnnxModel() {
         val option = GlobalVars.ortoption
-//        option.setIntraOpNumThreads(4)
+        option.setIntraOpNumThreads(4)
 
-//        if (!isNnapiAdded) {
-//            o\ption.addNnapi()
-//            isNnapiAdded = true
-//        }
+        if (!isNnapiAdded) {
+            option.addNnapi()
+            isNnapiAdded = true
+        }
         if (!::pfdSession.isInitialized)
             pfdSession =
                 GlobalVars.ortEnv.createSession(commonUtils.readModel(ModelType.PFD), option)
@@ -457,10 +457,6 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
 
             if (isRecording) {
                 // recycle bitmaps and clear globalBitmapStore to free memory
-                globalBitmapStore.forEach { bitmap: Bitmap ->
-                    bitmap.recycle()
-                }
-                globalBitmapStore.clear()
 
                 // start video recording
                 // recording thread
@@ -473,6 +469,8 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                         Thread.sleep(1000)
                     }
                 }
+
+                pfdSession.close()
 
 //                drawPreview(globalPfdResult)
             } else {
@@ -497,6 +495,10 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                         Toast.LENGTH_SHORT
                     )
                         .show()
+                    globalBitmapStore.forEach { bitmap: Bitmap ->
+                        bitmap.recycle()
+                    }
+                    globalBitmapStore.clear()
                 } else {
                     Toast.makeText(
                         requireContext(),
@@ -525,7 +527,6 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                     })
 
                     if (pfdResult?.size != 0) {
-                        globalPfdResult = pfdResult!!
                         globalPfdResult = pfdResult!!
                         isKeypointSelected = true
 
@@ -617,7 +618,6 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
             // start vad prediction
             harHelper.vadInference()
 
-            startRecording()
         } else if (!isRecording) {
             recordingCircle.visibility = View.GONE
             frameCounter.visibility = View.GONE
@@ -634,7 +634,6 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
             // stop vad prediction
             harHelper.vadInference()
 
-            stopRecording()
         }
     }
 
@@ -823,13 +822,13 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                 val keyPoints = pfdResult.keypoint.value
                 val bbox = pfdResult.bbox.value
 
-                if (keyPoints.isEmpty() || bitmap == null || localLandmark == null) {
+                if (keyPoints.isEmpty() || bitmap == null) {
                     Toast.makeText(requireContext(), "Painting not detected!", Toast.LENGTH_LONG)
                         .show()
                 } else {
                     val isHandInFrame = pfdHelper.isHandInFrame(
                         bitmap,
-                        globalPfdResult.bbox.value[0],
+                        pfdResult.bbox.value[0],
                         localLandmark
                     )
 
@@ -843,13 +842,15 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                                 )
                             }
 
-                            previewViewSmall.setImageBitmap(transformedBitmap)
-                            previewViewSmall.invalidate()
 
+                            if (initialCapture) globalBitmapStore.clear()
                             initialCapture = false
 
-                            // add bitmap to global
+                            previewViewSmall.setImageBitmap(transformedBitmap)
+                            previewViewSmall.invalidate()
                             globalBitmapStore.add(transformedBitmap)
+
+                            bitmap.recycle()
 
                             val plusOne: String =
                                 (frameCounter.text.toString().toInt() + 1).toString()

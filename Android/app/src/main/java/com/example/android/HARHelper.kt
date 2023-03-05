@@ -37,7 +37,6 @@ class HARHelper(val context: Context) {
 
     fun harInference(inputSkeleton: MultiArray<Float, DN>, harSession: OrtSession): String {
         val shape = longArrayOf(1, 3, 144, 25, 2)
-        val capacity = shape.reduce { acc, s -> acc * s }.toInt()
 
         val inputNameIterator = harSession.inputNames!!.iterator()
         val inputName0: String = inputNameIterator.next()
@@ -61,7 +60,10 @@ class HARHelper(val context: Context) {
 
             val predictionArray: FloatArray = FloatArray(prediction.floatBuffer.remaining())
             prediction.floatBuffer.get(predictionArray)
-
+            buffer.clear()
+            tensor0.close()
+            inputMap.clear()
+            prediction.close()
             return getLabel(predictionArray, vadProb)
         }
     }
@@ -90,6 +92,12 @@ class HARHelper(val context: Context) {
             if (top1Index == 2 && isVoiceDetected == 0) {
                 top1Index = 0
             }
+
+            if (updatedLabel!=top1Index && previousLabel==top1Index)
+                updatedLabel = top1Index
+            previousLabel = top1Index
+
+            top1Index = updatedLabel
 
             when (top1Index) {
                 0 -> " "

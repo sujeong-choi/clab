@@ -80,17 +80,17 @@ class PFDHelper(val context: Context) {
         val sortedOutput = mutableMapOf<String, Any>()
 
         // resize bitmap
-        val resizedBitmap: Bitmap = resizeBitmap(bitmap, targetSize)
+//        val resizedBitmap: Bitmap = resizeBitmap(bitmap, targetSize)
 
         val inputNameIterator = ortSession.inputNames!!.iterator()
         val inputName0: String = inputNameIterator.next()
         val inputName1: String = inputNameIterator.next()
-        val shape = longArrayOf(3, resizedBitmap.height.toLong(), resizedBitmap.width.toLong())
+        val shape = longArrayOf(3, bitmap.height.toLong(), bitmap.width.toLong())
 
 
         val env = GlobalVars.ortEnv
         env.use {
-            val tensor0 = OnnxTensor.createTensor(env, preProcess(resizedBitmap), shape)
+            val tensor0 = OnnxTensor.createTensor(env, preProcess(bitmap), shape)
 
             // send an empty bitmap to avoid extra computation
             val bufferSize = shape.reduce(Long::times).toInt()
@@ -101,31 +101,37 @@ class PFDHelper(val context: Context) {
             inputMap[inputName0] = tensor0
             inputMap[inputName1] = tensor1
 
-            val output = ortSession.run(inputMap)
+            try {
 
-            val outputNames = ortSession.outputNames.toList()
+                val output = ortSession.run(inputMap)
 
-            /*
-            * Output format from the model is as follows
-            * boxes_1: float coordinates containing coordinates of bounding boxes in the format [[top_left_x, top_left_y, bottom_right_x, bottom_right_y]]
-            * labels_1: one hot encoding of labels
-            * scores_1: scores of each bounding box
-            * keypoints_1: list of 4 keypoints for each bounding box, each keypoint contains [x, y, a] values
-            * keypoint_scores_1: scores of each keypoints
-            * */
-            for (idx in outputNames.indices) {
-                val name = outputNames[idx]
-                sortedOutput[name] = output?.get(idx)?.value as Any
+                val outputNames = ortSession.outputNames.toList()
 
-                // break on the 5th item since the second image is a dummy image
-                if (idx == 4) break
+                /*
+                * Output format from the model is as follows
+                * boxes_1: float coordinates containing coordinates of bounding boxes in the format [[top_left_x, top_left_y, bottom_right_x, bottom_right_y]]
+                * labels_1: one hot encoding of labels
+                * scores_1: scores of each bounding box
+                * keypoints_1: list of 4 keypoints for each bounding box, each keypoint contains [x, y, a] values
+                * keypoint_scores_1: scores of each keypoints
+                * */
+                for (idx in outputNames.indices) {
+                    val name = outputNames[idx]
+                    sortedOutput[name] = output?.get(idx)?.value as Any
+
+                    // break on the 5th item since the second image is a dummy image
+                    if (idx == 4) break
+                }
             }
-        }
+            catch (e: Exception) {
+                e.message?.let { it1 -> Log.v("PFD", it1) }
+            }
 
-        return if (sortedOutput.isNotEmpty())
-            preprocessOutput(sortedOutput, bitmap.width, bitmap.height)
-        else {
-            return PfdResult()
+            return if (sortedOutput.isNotEmpty())
+                preprocessOutput(sortedOutput, bitmap.width, bitmap.height)
+            else {
+                return PfdResult()
+            }
         }
     }
 
@@ -145,7 +151,7 @@ class PFDHelper(val context: Context) {
         var size = 0
 
         for (idx in scores.indices) {
-            if (scores[idx] >= 0.8) {
+            if (scores[idx] >= 0.7) {
                 // add boxes to processed output
                 val bbox: FloatArray = bboxes[idx]
                 processedOutput.bbox.value.add(bbox)
@@ -161,7 +167,8 @@ class PFDHelper(val context: Context) {
 
         processedOutput.size = size
 
-        return resizeOutput(processedOutput, origWidth, origHeight)
+        return processedOutput
+//        return resizeOutput(processedOutput, origWidth, origHeight)
     }
 
     private fun resizeOutput(
@@ -259,7 +266,11 @@ class PFDHelper(val context: Context) {
         return false
     }
 
-    private fun isPointInsideRectangle(point: FloatArray, bbox: FloatArray, bufferZone: Int = 10): Boolean {
+    private fun isPointInsideRectangle(
+        point: FloatArray,
+        bbox: FloatArray,
+        bufferZone: Int = 10
+    ): Boolean {
         val topLeftX = bbox[0] - bufferZone
         val topLeftY = bbox[1] - bufferZone
         val bottomRightX = bbox[2] + bufferZone
@@ -278,8 +289,8 @@ class PFDHelper(val context: Context) {
         val file = File(getVideoFilePath("timelapse"))
         var out: FileChannelWrapper? = null
 
-        var tlWidth = if(frames[0].width % 2 == 0) frames[0].width else frames[0].width - 1
-        var tlHeight = if(frames[0].height % 2 == 0) frames[0].height else frames[0].height - 1
+        var tlWidth = if (frames[0].width % 2 == 0) frames[0].width else frames[0].width - 1
+        var tlHeight = if (frames[0].height % 2 == 0) frames[0].height else frames[0].height - 1
 
         val timelapseSaveThread = thread {
             try {
