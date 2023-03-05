@@ -613,7 +613,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
             recordButton.text = "STOP"
 
             // start HAR inference
-            enableHarInference = true
+//            enableHarInference = true
 
             // disable detect button while recording
             detectButton.isEnabled = false
