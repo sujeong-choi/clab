@@ -28,6 +28,7 @@ import androidx.camera.view.PreviewView
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.MutableLiveData
 import androidx.navigation.fragment.findNavController
 import com.example.android.databinding.VideoFragmentBinding
 import com.google.common.util.concurrent.ListenableFuture
@@ -112,10 +113,11 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
     private var isCameraFacingFront: Boolean = false
     private var enableHarInference: Boolean = false
     private var timelapseThread: Thread? = null
+    private val harListenableLabel : MutableLiveData<String> =  MutableLiveData<String>()
     private var globalPfdResult: PfdResult = PfdResult()
     private var globalLandmark: NormalizedLandmarkList? = null
     private var globalBitmapStore: MutableList<Bitmap> = mutableListOf()
-    private var recordingState: String = "Painting"
+    private var recordingState: String = "No Activity"
     private var previewSize: Size? = null
     private var timelapseFps: Int = 30
     private var skeletonBuffer = ArrayList<D2Array<Float>>()
@@ -218,6 +220,10 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
             fixedRateTimer(name = "SkeletonTimer", initialDelay = 0L, period = 4000L) {
                 getSkeleton()
             }
+
+        harListenableLabel.observe(viewLifecycleOwner) { it ->
+            toggleHarLabel(it)
+        }
     }
 
     private fun initMediaPipe() {
@@ -310,15 +316,23 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
         if (!::pfdSession.isInitialized)
             pfdSession =
                 GlobalVars.ortEnv.createSession(commonUtils.readModel(ModelType.PFD), option)
+        if (!::harSession.isInitialized)
+            harSession = GlobalVars.ortEnv.createSession(commonUtils.readModel(ModelType.HAR), option)
     }
 
     private fun getSkeleton() {
         if (enableHarInference) {
-            val input = harHelper.convertSkeletonData(skeletonBuffer)
-            val label: String = harHelper.harInference(input, harSession)
+            //for fast refreshing
+            val curSkeletonBuffer = ArrayList<D2Array<Float>>()
+            curSkeletonBuffer.addAll(skeletonBuffer)
             skeletonBuffer.clear()
 
-            Log.v("HAR", label)
+            val input = harHelper.convertSkeletonData(curSkeletonBuffer)
+            val label: String = harHelper.harInference(input, harSession)
+
+            Log.v("Label", label)
+
+            harListenableLabel.postValue(label)
 
 //            requireActivity().runOnUiThread(java.lang.Runnable {
 //                toggleHarLabel(label)
@@ -458,27 +472,9 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                             // update preview screen if hand isn't in frame
                             drawPreview(globalPfdResult, globalLandmark, bitmap)
                         }
-                        Thread.sleep(1000)
+                        Thread.sleep(3000)
                     }
                 }
-
-                pfdSession.close()
-                System.gc()
-
-                val option = GlobalVars.ortoption
-                option.setIntraOpNumThreads(2)
-                option.setExecutionMode(OrtSession.SessionOptions.ExecutionMode.PARALLEL)
-
-                if (!isNnapiAdded) {
-                    option.addNnapi()
-                    isNnapiAdded = true
-                }
-
-                if (!::harSession.isInitialized)
-                    harSession = GlobalVars.ortEnv.createSession(commonUtils.readModel(ModelType.HAR), option)
-
-                // start HAR inference
-                enableHarInference = true
 //                drawPreview(globalPfdResult)
             } else {
                 // stop video recording
@@ -615,6 +611,9 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
             harLabel.visibility = View.VISIBLE
             previewViewSmall.visibility = View.VISIBLE
             recordButton.text = "STOP"
+
+            // start HAR inference
+            enableHarInference = true
 
             // disable detect button while recording
             detectButton.isEnabled = false
