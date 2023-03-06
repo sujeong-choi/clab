@@ -3,8 +3,6 @@ package com.example.android
 import android.content.Context
 import android.content.res.AssetManager
 import android.graphics.Bitmap
-import android.graphics.Point
-import android.graphics.Rect
 import android.media.MediaMetadataRetriever
 import android.media.ThumbnailUtils
 import android.os.Handler
@@ -12,7 +10,6 @@ import android.os.HandlerThread
 import android.util.Size
 import android.view.PixelCopy
 import android.view.SurfaceView
-import com.google.mediapipe.formats.proto.LandmarkProto.NormalizedLandmarkList
 import org.opencv.android.Utils
 import org.opencv.core.CvType
 import org.opencv.core.Mat
@@ -22,12 +19,15 @@ import java.nio.MappedByteBuffer
 import java.nio.channels.FileChannel
 import kotlin.math.abs
 
+// all model naming is done here
 enum class ModelType(val modelName: String) {
     HAR("har_gcn"), PFD("keypoint_rcnn"), VAD("silero_vad")
 }
 
+/**
+ * Common Utils that are used throughout the app
+ */
 class CommonUtils(val context: Context) {
-    // PFD Utils
     fun bitmapToMat(bitmap: Bitmap): Mat {
         val mat = Mat(bitmap.height, bitmap.width, CvType.CV_8UC4)
         Utils.bitmapToMat(bitmap, mat)
@@ -47,16 +47,6 @@ class CommonUtils(val context: Context) {
         Utils.matToBitmap(mat, bitmap)
 
         return bitmap
-    }
-
-    @Throws(IOException::class)
-    fun getModelByteBuffer(assetManager: AssetManager, modelPath: String): MappedByteBuffer {
-        val fileDescriptor = assetManager.openFd(modelPath)
-        val inputStream = FileInputStream(fileDescriptor.fileDescriptor)
-        val fileChannel = inputStream.channel
-        val startOffset = fileDescriptor.startOffset
-        val declaredLength = fileDescriptor.declaredLength
-        return fileChannel.map(FileChannel.MapMode.READ_ONLY, startOffset, declaredLength)
     }
 
     fun getFrameBitmap(view: SurfaceView, callback: (Bitmap?) -> Unit) {

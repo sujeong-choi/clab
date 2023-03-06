@@ -4,8 +4,6 @@ import ai.onnxruntime.OnnxTensor
 import ai.onnxruntime.OrtSession
 import android.content.Context
 import android.graphics.Bitmap
-import android.os.Environment
-import android.os.HandlerThread
 import android.util.Log
 import com.google.mediapipe.formats.proto.LandmarkProto
 import org.jcodec.api.android.AndroidSequenceEncoder
@@ -24,6 +22,7 @@ import kotlin.math.abs
 import org.opencv.core.Point as CVPoint
 
 
+// Keypoint and bbox datatypes
 class KeypointListType(val value: MutableList<MutableList<FloatArray>>)
 
 class BboxListType(val value: MutableList<FloatArray>)
@@ -34,17 +33,15 @@ data class PfdResult(
     var size: Int = 0
 ) {}
 
+
+/**
+ * PFD Helper class containing logic related to PFD Prediction and Detection and Timelapse Sampling
+ */
 class PFDHelper(val context: Context) {
     private var commonUtils: CommonUtils = CommonUtils(context)
     private val DIM_BATCH_SIZE = 1
     private val DIM_PIXEL_SIZE = 3
     private val targetSize: Int = 512
-
-    // Read ort model into a ByteArray, run in background
-    fun readPfdModel(): ByteArray {
-        val modelID = R.raw.keypoint_rcnn
-        return context.resources.openRawResource(modelID).readBytes()
-    }
 
     fun preProcess(bitmap: Bitmap): FloatBuffer {
         val imgWidth = bitmap.width
@@ -79,7 +76,7 @@ class PFDHelper(val context: Context) {
         // output object
         val sortedOutput = mutableMapOf<String, Any>()
 
-        // resize bitmap
+        // resize bitmap for memory optimization, disabled to avoid model accuracy
 //        val resizedBitmap: Bitmap = resizeBitmap(bitmap, targetSize)
 
         val inputNameIterator = ortSession.inputNames!!.iterator()
@@ -167,10 +164,13 @@ class PFDHelper(val context: Context) {
 
         processedOutput.size = size
 
+        // to be used when input image is resized, output keypoints also need to be resized
+        // return resizeOutput(processedOutput, origWidth, origHeight)
+
         return processedOutput
-//        return resizeOutput(processedOutput, origWidth, origHeight)
     }
 
+    // resize keypoint outputs
     private fun resizeOutput(
         pfdResult: PfdResult,
         origWidth: Int,
@@ -182,8 +182,8 @@ class PFDHelper(val context: Context) {
         val widthRatio = origWidth.toFloat() / targetSize.toFloat()
         val heightRatio = origHeight.toFloat() / targetSize.toFloat()
 
-        var bboxes = pfdResult.bbox.value
-        var keypointsList = pfdResult.keypoint.value
+        val bboxes = pfdResult.bbox.value
+        val keypointsList = pfdResult.keypoint.value
 
 
         // resize bbox and keypoint
@@ -289,8 +289,8 @@ class PFDHelper(val context: Context) {
         val file = File(getVideoFilePath("timelapse"))
         var out: FileChannelWrapper? = null
 
-        var tlWidth = if (frames[0].width % 2 == 0) frames[0].width else frames[0].width - 1
-        var tlHeight = if (frames[0].height % 2 == 0) frames[0].height else frames[0].height - 1
+        val tlWidth = if (frames[0].width % 2 == 0) frames[0].width else frames[0].width - 1
+        val tlHeight = if (frames[0].height % 2 == 0) frames[0].height else frames[0].height - 1
 
         val timelapseSaveThread = thread {
             try {
@@ -322,7 +322,6 @@ class PFDHelper(val context: Context) {
         return "$fileDir/$fileName"
     }
 
-
     fun perspectiveTransformation(imageBitmap: Bitmap, keyPoints: MutableList<FloatArray>): Bitmap {
         val imgMat = commonUtils.bitmapToMat(imageBitmap)
 
@@ -334,7 +333,6 @@ class PFDHelper(val context: Context) {
         val imgWidth = abs(topLeft[0] - topRight[0])
         val imgHeight = abs(topLeft[1] - bottomLeft[1])
 
-        // srcPoints => (top_left, top_right, bottom_left, bottom_right)
         val srcPoints = arrayOf(
             CVPoint(topLeft[0].toDouble(), topLeft[1].toDouble()),
             CVPoint(topRight[0].toDouble(), topRight[1].toDouble()),
@@ -364,12 +362,13 @@ class PFDHelper(val context: Context) {
         return commonUtils.matToBitmap(transformedMat)!!
     }
 
+    // perspective transformation for a list of bitmaps instead of one
     fun perspectiveTransformation(
         imageBitmapList: List<Bitmap>,
         keyPoint: MutableList<FloatArray>
     ): List<Bitmap> {
 
-        var transformedList: List<Bitmap> = mutableListOf<Bitmap>()
+        val transformedList: List<Bitmap> = mutableListOf<Bitmap>()
 
         for (i in imageBitmapList.indices) {
             val transformedBitmap = perspectiveTransformation(imageBitmapList[i], keyPoint)

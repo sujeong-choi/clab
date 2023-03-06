@@ -18,8 +18,9 @@ import java.util.concurrent.Executors
 import kotlin.math.exp
 
 
-// show the frames on the video
-// save the video
+/**
+ * HAR Helper class containing all logic related to HAR Inference and Skeleton Processing
+ */
 class HARHelper(val context: Context) {
     private var isListening: Boolean = false
     private val classificationExecutor: Executor = Executors.newSingleThreadExecutor()
@@ -65,6 +66,7 @@ class HARHelper(val context: Context) {
         }
     }
 
+    // get label for harPrediction
     private fun getLabel(harOutput: FloatArray, vadOutput: Float): String {
         return try {
             val harOutProb = softmax(harOutput)
@@ -107,6 +109,7 @@ class HARHelper(val context: Context) {
         }
     }
 
+    // softmax function to convert the original output to softmax
     private fun softmax(input: FloatArray): FloatArray {
         val output = FloatArray(input.size)
         var sum = 0.0f
@@ -127,8 +130,8 @@ class HARHelper(val context: Context) {
 
     //save skeleton data in one frame and append to (144,25,3) ndarray
     fun saveSkeletonData(poseLandmarks: LandmarkProto.LandmarkList): D2Array<Float> {
-        var oneFrameSkeleton = mk.d2array(25, 3) { 0.0f }
-        var landmark = poseLandmarks.landmarkList
+        val oneFrameSkeleton = mk.d2array(25, 3) { 0.0f }
+        val landmark = poseLandmarks.landmarkList
         for (i: Int in 0..24) {
             if (landmark[i].visibility >= 0.75) {
                 oneFrameSkeleton[i, 0] = landmark[i].x
@@ -139,6 +142,7 @@ class HARHelper(val context: Context) {
         return oneFrameSkeleton
     }
 
+    // sample skeleton data for 60 frames
     private fun sampleSkeletonData(skeletonBuffer: ArrayList<D2Array<Float>>): D3Array<Float> {
         val framesSkeleton = mk.d3array(144, 25, 3) { 0.0f }
         val frameNum = skeletonBuffer.size
@@ -153,6 +157,7 @@ class HARHelper(val context: Context) {
         return framesSkeleton
     }
 
+    // convert shape of skeleton data to fit model
     fun convertSkeletonData(skeletonBuffer: ArrayList<D2Array<Float>>): MultiArray<Float, DN> {
         //dummy humman skeleton data to align the input dimension of the model
         val humansSkeleton =
@@ -160,6 +165,7 @@ class HARHelper(val context: Context) {
         return humansSkeleton.transpose(3, 1, 2, 0).expandDims(axis = 0)
     }
 
+    // void activity detection listener
     private val recognitionListener = object : RecognitionListener {
         override fun onResult(hypothesis: Float?) {
             if (hypothesis != null)
@@ -171,6 +177,7 @@ class HARHelper(val context: Context) {
         }
     }
 
+    // start or stop vadInference
     fun vadInference() {
         if (!isListening) {
             vadService.startListening(recognitionListener)

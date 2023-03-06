@@ -2,36 +2,26 @@ package com.example.android
 
 import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
-import android.app.Activity
 import android.content.Context
-import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.SurfaceTexture
-import android.media.MediaMetadataRetriever
-import android.media.MediaRecorder
-import android.net.Uri
 import android.os.Bundle
-import android.os.Environment
 import android.util.AttributeSet
 import android.util.Log
 import android.util.Size
 import android.view.*
 import android.widget.*
-import androidx.camera.core.ExperimentalGetImage
-import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.video.Recorder
 import androidx.camera.video.VideoCapture
 import androidx.camera.view.PreviewView
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
-import androidx.lifecycle.MutableLiveData
 import androidx.navigation.fragment.findNavController
 import com.example.android.databinding.VideoFragmentBinding
-import com.google.common.util.concurrent.ListenableFuture
 import com.google.mediapipe.components.CameraHelper.CameraFacing
 import com.google.mediapipe.components.CameraHelper.OnCameraStartedListener
 import com.google.mediapipe.components.CameraXPreviewHelper
@@ -46,9 +36,6 @@ import com.google.mediapipe.glutil.EglManager
 import com.google.protobuf.InvalidProtocolBufferException
 import org.jetbrains.kotlinx.multik.ndarray.data.D2Array
 import org.opencv.android.OpenCVLoader
-import java.io.File
-import java.text.SimpleDateFormat
-import java.util.*
 import java.util.concurrent.Executor
 import java.util.concurrent.Executors
 import kotlin.concurrent.fixedRateTimer
@@ -58,12 +45,14 @@ import kotlin.concurrent.thread
 class GlobalVars {
     companion object {
         @JvmField
-        // setup onnx model
+        // setup global onnx model environment
         var ortEnv: OrtEnvironment = OrtEnvironment.getEnvironment()
-        val ortoption = OrtSession.SessionOptions()
     }
 }
 
+/**
+ * Video Fragment contains all UI logic related to video processing, management of model files and display and using API
+ */
 class VideoFragment : Fragment(R.layout.video_fragment) {
     // view variables
     private lateinit var binding: VideoFragmentBinding
@@ -91,12 +80,8 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
     private lateinit var harSession: OrtSession
 
     // camera variables
-    private lateinit var cameraProviderFuture: ListenableFuture<ProcessCameraProvider>
-    private lateinit var mediaMetadataRetriever: MediaMetadataRetriever
     private val executor: Executor = Executors.newSingleThreadExecutor()
     private var videoCapture: VideoCapture<Recorder>? = null
-    private lateinit var videoFile: File
-    private var mediaRecorder: MediaRecorder? = null
 
     // mediapipe variables
     private lateinit var cameraHelper: CameraXPreviewHelper
@@ -113,11 +98,10 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
     private var isCameraFacingFront: Boolean = false
     private var enableHarInference: Boolean = false
     private var timelapseThread: Thread? = null
-    private val harListenableLabel : MutableLiveData<String> =  MutableLiveData<String>()
     private var globalPfdResult: PfdResult = PfdResult()
     private var globalLandmark: NormalizedLandmarkList? = null
     private var globalBitmapStore: MutableList<Bitmap> = mutableListOf()
-    private var recordingState: String = "Painting"
+    private var recordingState: String = "No Activity"
     private var previewSize: Size? = null
     private var timelapseFps: Int = 30
     private var skeletonBuffer = ArrayList<D2Array<Float>>()
@@ -131,10 +115,6 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
         )
     private val REQUEST_CODE_PERMISSION = 101
     private val TAG = "VIDEOFRAG"
-
-    private var prevSampleTime = 0L
-
-    // Create a MediaMetadataRetriever
 
     class CustomMediaController : MediaController {
         constructor(context: Context?, attrs: AttributeSet?) : super(context, attrs) {}
@@ -152,6 +132,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
     }
 
     init {
+        // load opencv3 and mediapipe libraries
         System.loadLibrary("mediapipe_jni")
         System.loadLibrary("opencv_java3")
     }
@@ -165,6 +146,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
         return binding.root
     }
 
+    // setup UI bindings and init mediapipe + opencv + model here
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
@@ -212,20 +194,14 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
         videoView.setMediaController(mediaController)
         timeLapseView.setMediaController(mediaController)
 
-        // create output video file
-//        videoFile = createVideoFile()
-
         //create skeleton HAR timer
-//        val skeletonTimer =
-//            fixedRateTimer(name = "SkeletonTimer", initialDelay = 0L, period = 4000L) {
-//                getSkeleton()
-//            }
-
-        harListenableLabel.observe(viewLifecycleOwner) { it ->
-            toggleHarLabel(it)
-        }
+        val skeletonTimer =
+            fixedRateTimer(name = "SkeletonTimer", initialDelay = 0L, period = 4000L) {
+                getSkeleton()
+            }
     }
 
+    // init media pipe and set variables according to offical docs
     private fun initMediaPipe() {
         if (::processor.isInitialized) {
             processor.close()
@@ -263,7 +239,13 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                 applicationInfo.metaData.getString("outputLandmarksStreamNameWorld")
             ) { packet: Packet ->
                 if (enableHarInference)
-                    skeletonBuffer.add(harHelper.saveSkeletonData( LandmarkProto.LandmarkList.parseFrom(PacketGetter.getProtoBytes(packet))))
+                    skeletonBuffer.add(
+                        harHelper.saveSkeletonData(
+                            LandmarkProto.LandmarkList.parseFrom(
+                                PacketGetter.getProtoBytes(packet)
+                            )
+                        )
+                    )
             }
 
             processor.addPacketCallback(
@@ -286,6 +268,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
             e.message?.let { Log.v(TAG, it) }
         }
 
+        // create mediapipe converter (refer )
         converter = ExternalTextureConverter(
             eglManager.context, 2
         )
@@ -304,8 +287,10 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
         }
     }
 
+    // setup onnx model using global onnx env
     private fun setupOnnxModel() {
-        val option = GlobalVars.ortoption
+        val env = GlobalVars.ortEnv
+        val option = OrtSession.SessionOptions()
         option.setIntraOpNumThreads(2)
         option.setExecutionMode(OrtSession.SessionOptions.ExecutionMode.PARALLEL)
 
@@ -315,11 +300,13 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
         }
         if (!::pfdSession.isInitialized)
             pfdSession =
-                GlobalVars.ortEnv.createSession(commonUtils.readModel(ModelType.PFD), option)
+                env.createSession(commonUtils.readModel(ModelType.PFD), option)
         if (!::harSession.isInitialized)
-            harSession = GlobalVars.ortEnv.createSession(commonUtils.readModel(ModelType.HAR), option)
+            harSession =
+                env.createSession(commonUtils.readModel(ModelType.HAR), option)
     }
 
+    // get skeletons for HAR processing
     private fun getSkeleton() {
         if (enableHarInference) {
             //for fast refreshing
@@ -330,16 +317,13 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
             val input = harHelper.convertSkeletonData(curSkeletonBuffer)
             val label: String = harHelper.harInference(input, harSession)
 
-            Log.v("Label", label)
-
-            harListenableLabel.postValue(label)
-
-//            requireActivity().runOnUiThread(java.lang.Runnable {
-//                toggleHarLabel(label)
-//            })
+            requireActivity().runOnUiThread(java.lang.Runnable {
+                toggleHarLabel(label)
+            })
         }
     }
 
+    // toggle HAR label
     private fun toggleHarLabel(label: String) {
         harLabel.text = label
         if (label.contains("Painting")) {
@@ -353,7 +337,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
         }
     }
 
-
+    // setup draggable prevew for timelapse frames
     private fun setupDraggablePreview() {
         //set bg color for previewViewSmall
         previewViewSmall.setBackgroundColor(
@@ -446,6 +430,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
         }
     }
 
+    // setup all onclick listeners
     private fun setClickListeners() {
         // timelapse and upload button listeners
         binding.timelapseButton.setOnClickListener {
@@ -462,9 +447,6 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
             toggleRecording()
 
             if (isRecording) {
-                // recycle bitmaps and clear globalBitmapStore to free memory
-
-                // start video recording
                 // recording thread
                 timelapseThread = thread {
                     while (isRecording) {
@@ -475,14 +457,14 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                         Thread.sleep(1000)
                     }
                 }
-//                drawPreview(globalPfdResult)
             } else {
-                // stop video recording
-
                 // stop timelapse thread
                 timelapseThread?.join()
 
+                // show loading spinner
+                loadingView.visibility = View.VISIBLE
                 // save timelapse
+
                 if (globalBitmapStore.size > timelapseFps) {
                     pfdHelper.saveVideoFromBitmaps(
                         globalBitmapStore,
@@ -504,9 +486,13 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                     )
                         .show()
                 }
+
+                // show loading spinner
+                loadingView.visibility = View.VISIBLE
             }
         }
 
+        // detect button click listener
         detectButton.setOnClickListener {
             try {
                 commonUtils.getFrameBitmap(previewDisplayView) { bitmap: Bitmap? ->
@@ -542,9 +528,6 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                         )
                             .show()
                     }
-
-                    // for memory optimization
-//                    bitmap?.recycle()
                 }
 
             } catch (e: Exception) {
@@ -555,6 +538,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
         }
     }
 
+    // override on resume to resume unused resources
     override fun onResume() {
         super.onResume()
 
@@ -576,6 +560,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
         }
     }
 
+    // override on pause to freeup unused resources
     override fun onPause() {
         super.onPause()
         try {
@@ -585,14 +570,6 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
             e.printStackTrace()
         }
         timelapseThread?.join()
-    }
-
-    private fun toggleLoading() {
-        if (isLoading) {
-
-        } else if (!isLoading) {
-
-        }
     }
 
     private fun toggleRecording() {
@@ -607,10 +584,10 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
             recordButton.text = "STOP"
 
             // start HAR inference
-//            enableHarInference = true
+            enableHarInference = true
 
             // disable detect button while recording
-//            detectButton.isEnabled = false
+            detectButton.isEnabled = false
 
             // start vad prediction
             harHelper.vadInference()
@@ -622,11 +599,11 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
             previewViewSmall.visibility = View.GONE
             recordButton.text = "RECORD"
 
-            // enable detect button while recording
-            detectButton.isEnabled = true
-
             // start HAR inference
             enableHarInference = false
+
+            // enable detect button while recording
+            detectButton.isEnabled = true
 
             // stop vad prediction
             harHelper.vadInference()
@@ -683,68 +660,6 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
 
     }
 
-    @ExperimentalGetImage
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == VIDEO_REQUEST_CODE && resultCode == Activity.RESULT_OK) {
-            val videoUri: Uri? = data?.data
-
-            // create metadataretreiver
-            try {
-                mediaMetadataRetriever.setDataSource(videoUri!!.path)
-            } catch (e: Exception) {
-                e.message?.let { Log.v("Error", it) }
-            }
-
-            // Show VideoView and set video source
-            previewView.visibility = View.GONE
-            previewViewSmall.visibility = View.GONE
-
-            videoView.visibility = View.VISIBLE
-            videoView.setVideoURI(videoUri)
-            videoView.requestFocus()
-            videoView.start()
-
-            // extract video frames
-            val videoFrames: List<Bitmap> = commonUtils.getVideoFrames(mediaMetadataRetriever)
-
-            // pass all video frames to pfd inference function
-            // fix only pass one frame
-            val output = pfdHelper.pfdInference(videoFrames[0], pfdSession)
-
-            // TODO: draw keypoints on top of videoView
-
-            // perform perspective transformation on frames
-//            val transformedBitmaps: List<Bitmap> =
-//                pfdHelper.perspectiveTransformation(videoFrames, output.keypoint.value[0])
-//
-//            // save keyPoints as a timelapse
-//            val outputDir = requireContext().filesDir // or context.cacheDir
-//
-//            val width =
-//                mediaMetadataRetriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)!!
-//                    .toInt()
-//            val height =
-//                mediaMetadataRetriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)!!
-//                    .toInt()
-//            val frameRate =
-//                mediaMetadataRetriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_CAPTURE_FRAMERATE)!!
-//                    .toInt()
-//
-//            pfdHelper.saveVideoFromBitmaps(
-//                transformedBitmaps,
-//                outputDir.path,
-//                width,
-//                height,
-//                frameRate
-//            )
-
-            timeLapseView.visibility = View.VISIBLE
-            timeLapseView.setVideoURI(videoUri)
-            timeLapseView.start()
-        }
-    }
-
     private fun startCamera() {
         cameraHelper = CameraXPreviewHelper()
         cameraHelper.setOnCameraStartedListener(
@@ -763,51 +678,6 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
 
         videoCapture = VideoCapture.withOutput(recorder)
     }
-
-    private fun startRecording() {
-        try {
-            mediaRecorder = MediaRecorder(requireContext())
-            mediaRecorder?.apply {
-                setVideoSource(MediaRecorder.VideoSource.SURFACE)
-                setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
-                setOutputFile(getVideoFilePath())
-//                setVideoEncodingBitRate(10000000)
-                setVideoFrameRate(30)
-                setVideoSize(previewDisplayView.width, previewDisplayView.height)
-                setVideoEncoder(MediaRecorder.VideoEncoder.H264)
-            }
-            mediaRecorder?.setInputSurface(Surface(previewFrameTexture))
-            mediaRecorder?.prepare()
-            mediaRecorder?.start()
-            mediaRecorder?.start()
-        } catch (e: Exception) {
-            Log.v(TAG, "")
-        }
-    }
-
-    private fun stopRecording() {
-        try {
-            mediaRecorder?.apply {
-                stop()
-                release()
-            }
-            mediaRecorder = null
-
-            Toast.makeText(requireContext(), "Video recording has been saved!", Toast.LENGTH_LONG)
-                .show()
-        } catch (e: Exception) {
-            Log.v(TAG, "")
-        }
-    }
-
-    private fun getVideoFilePath(): String {
-        val dateFormat = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault())
-        val currentDateAndTime: String = dateFormat.format(Date())
-        val fileName = "$currentDateAndTime.mp4"
-        val fileDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM)
-        return "$fileDir/$fileName"
-    }
-
 
     private fun drawPreview(
         pfdResult: PfdResult,
@@ -861,8 +731,6 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
             } catch (e: Exception) {
                 e.message?.let { Log.v("Error", it) }
             }
-
-            // set the modified Bitmap as the image for the ImageView
         }
     }
 
@@ -881,22 +749,12 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
             } catch (e: Exception) {
                 e.message?.let { Log.v("Error", it) }
             }
-
-            // set the modified Bitmap as the image for the ImageView
         }
-    }
-
-    companion object {
-        private const val VIDEO_REQUEST_CODE = 1
     }
 
     override fun onDestroy() {
         super.onDestroy()
-
-//        converter.close()
-
         // Hide preview display until we re-open the camera again.
-//        previewDisplayView.visibility = View.GONE
         pfdHelper.destroyModel()
         harHelper.destroyModel()
     }

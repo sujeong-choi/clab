@@ -2,21 +2,18 @@ package com.example.android
 
 import android.content.Intent
 import android.os.Bundle
-import androidx.fragment.app.Fragment
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ArrayAdapter
 import android.widget.Toast
-import androidx.activity.OnBackPressedCallback
 import androidx.core.content.FileProvider
-import androidx.navigation.findNavController
-import androidx.navigation.fragment.findNavController
+import androidx.fragment.app.Fragment
 import com.example.android.databinding.TimelapseFragmentBinding
 import java.io.File
 
 /**
- * A simple [Fragment] subclass as the second destination in the navigation.
+ * Timelapse Fragment contains all UI logic related to timelapse displaying
  */
 class TimelapseFragment : Fragment() {
     lateinit var binding: TimelapseFragmentBinding

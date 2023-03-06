@@ -32,6 +32,7 @@ class VadService(
     private var recognizerThread: RecognizerThread? = null
     private val mainHandler = Handler(Looper.getMainLooper())
 
+    // start recognizer thread ot listen to audio and make vad predictions
     fun startListening(listener: RecognitionListener): Boolean {
         if (recognizerThread != null) return false
         recognizerThread = RecognizerThread(listener)
@@ -40,6 +41,7 @@ class VadService(
         return true
     }
 
+    // stop recognizer thread to freeup resources
     private fun stopRecognizerThread(): Boolean {
         if (recognizerThread == null) return false
         try {

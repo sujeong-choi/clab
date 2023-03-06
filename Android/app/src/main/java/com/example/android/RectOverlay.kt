@@ -5,6 +5,9 @@ import android.graphics.*
 import android.util.AttributeSet
 import android.view.View
 
+/**
+ * Rectangle Overlay to display keypoints
+ */
 class RectOverlay constructor(context: Context?, attributeSet: AttributeSet?) :
     View(context, attributeSet) {
 
@@ -43,10 +46,8 @@ class RectOverlay constructor(context: Context?, attributeSet: AttributeSet?) :
                     rectPaint
                 )
             }
-
             canvas?.drawRect(rect, paint)
         }
-
     }
 
     fun drawKeypoints(
