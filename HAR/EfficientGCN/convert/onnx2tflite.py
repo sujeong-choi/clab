@@ -5,25 +5,29 @@ from onnx_tf.backend import prepare
 import os, yaml, argparse
 from time import sleep
 
+
 class Onnx2Tflite():
     def start(self,args):
         self.args = args
 
-        onnx_model = onnx.load(self.args.onnx_fname)
+        # onnx_model = onnx.load(self.args.onnx_fname)
         # onnx.checker.check_model(onnx_model)
         # convert onnx to tflite
-        onnx.helper.printable_graph(onnx_model.graph)
+        # onnx.helper.printable_graph(onnx_model.graph)
 
         tf_model_path = "data/tf_model"
-        tf_rep = prepare(onnx_model)
-        tf_rep.export_graph(tf_model_path)
+        # tf_rep = prepare(onnx_model)
+        # tf_rep.export_graph(tf_model_path)
         print("success to save pb file\n")
 
         converter = tf.lite.TFLiteConverter.from_saved_model(tf_model_path)
+        converter.allow_custom_ops = True
+        converter.experimental_new_converter = True
         converter.target_spec.supported_ops = [
             tf.lite.OpsSet.TFLITE_BUILTINS, # enable TensorFlow Lite ops.
             tf.lite.OpsSet.SELECT_TF_OPS # enable TensorFlow ops.
         ]
+
         tflite_model = converter.convert()
         tflite_model_path = "data/tflite-model.tflite"
         with open(tflite_model_path, 'wb') as f:

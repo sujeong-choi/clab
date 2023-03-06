@@ -45,7 +45,7 @@ def main():
 
     elif args.finetuning:
         f = FineTuning(args)
-        f.start(3)
+        f.start(19)
     elif args.convertonnx:
             t2o = Torch2Onnx(args)
             t2o.start()
@@ -135,9 +135,9 @@ if __name__ == '__main__':
     main()
 
 # generate dataset : python main.py -c media20 -gd
-# training :  python main.py -c 2038 -g 0 --label 38# training :  python main.py -c media20 -g 1
-# testing :  python main.py -c 2038 -run -vp videos/test -g 1 --fps 15
-# generate skeleton files: python main.py  -c 5116 -gs -vp videos/painting_dataset --label 0     ## 0:painting, 1: interview, 2:pause ##
-# generate skeleton added video files: python main.py -c 2038 -vsk -vp videos/painting4sec
-# finetuning : python main.py -c 2012 -ft -g 0
-# convert pytorch model to onnx model : python main.py -mo -ofname convert/data/out.onnx -c media20 -g 1
+# training :  python main.py -c media20 -g 0
+# testing :  python main.py -c media20 -run -vp videos/test -g 0 --fps 15
+# generate skeleton files: python main.py  -c media20 -gs -vp videos/painting_dataset --label 0 
+# generate skeleton added video files: python main.py -c media20 -vsk -vp videos/painting4sec
+# finetuning : python main.py -c media20 -ft -g 0
+# convert pytorch model to onnx model : python main.py -mo -ofname convert/data/out.onnx -c media20 -g 0

@@ -14,15 +14,17 @@ __data_args = {
     'ntu-xsub38': {'class': 38, 'shape': [3, 6, 300, 25, 2], 'feeder': NTU_Feeder},
     'ntu-xset38': {'class': 38, 'shape': [3, 6, 300, 25, 2], 'feeder': NTU_Feeder},
     'mediapipe-xset':{'class':3, 'shape':[3, 6, 300, 25, 2], 'feeder': NTU_Feeder}, # 2/6
-    'mediapipe-ntu-xset':{'class': 20, 'shape': [3, 6, 300, 25, 2], 'feeder': NTU_Feeder}, # 2/10
+    'mediapipe-ntu-xset':{'class': 19, 'shape': [3, 300, 25, 2], 'feeder': NTU_Feeder}, # 2/10
 }
 
 def create(dataset, root_folder, transform, num_frame, inputs, **kwargs):
     graph = Graph(dataset)
     try:
         data_args = __data_args[dataset]
-        data_args['shape'][0] = len(inputs)
-        data_args['shape'][2] = num_frame
+        # data_args['shape'][0] = len(inputs)
+        # data_args['shape'][2] = num_frame
+        
+        data_args['shape'][1] = num_frame
     except:
         logging.info('')
         logging.error(f'Error: Do NOT exist this dataset: {dataset}!')

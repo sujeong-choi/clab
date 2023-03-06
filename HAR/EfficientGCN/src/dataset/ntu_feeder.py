@@ -32,48 +32,51 @@ class NTU_Feeder(Dataset):
         label = self.label[idx]
         name = self.name[idx]
         # seq_len = self.seq_len[idx]
-
+        
+        #* This part is don't use any more. This Process is moved to model/net.py for preprocessing git stq*
         # (C, max_frame, V, M) -> (I, C*2, T, V, M)
         # data(3,?300?,25,2) -> data_new(3,6,144,25,2)
         # I'm not sure if it's 300 or 60.
-        joint, velocity, bone = self.multi_input(data[:,:self.T,:,:]) # self.T is 144
-        data_new = []
-        if 'J' in self.inputs:
-            data_new.append(joint)
-        if 'V' in self.inputs:
-            data_new.append(velocity)
-        if 'B' in self.inputs:
-            data_new.append(bone)
-        data_new = np.stack(data_new, axis=0)
+        # joint, velocity, bone = self.multi_input(data[:,:self.T,:,:]) # self.T is 144
+        # data_new = []
+        # if 'J' in self.inputs:
+        #     data_new.append(joint)
+        # if 'V' in self.inputs:
+        #     data_new.append(velocity)
+        # if 'B' in self.inputs:
+        #     data_new.append(bone)
+        # data_new = np.stack(data_new, axis=0)
 
+        data_new = data[:,:self.T,:,:]
         return data_new, label, name #"data_new" is the data used as input to the model.
-
+    
+    #* This function is don't use any more. This Process is moved to model/net.py for preprocessing *
     #Function to generate bone and velocity data based on keypoints x, y, z (If the input format is correct from above, you can just take it and use it.)
-    def multi_input(self, data):
-        C, T, V, M = data.shape
-        joint = np.zeros((C*2, T, V, M))
-        velocity = np.zeros((C*2, T, V, M))
-        bone = np.zeros((C*2, T, V, M))
-        joint[:C,:,:,:] = data
-        for i in range(V):
-            joint[C:,:,i,:] = data[:,:,i,:] - data[:,:,1,:]
-        for i in range(T-2):
-            velocity[:C,i,:,:] = data[:,i+1,:,:] - data[:,i,:,:]
-            velocity[C:,i,:,:] = data[:,i+2,:,:] - data[:,i,:,:]
-        for i in range(len(self.conn)):
-            bone[:C,:,i,:] = data[:,:,i,:] - data[:,:,self.conn[i],:]
-        bone_length = 0
-        for i in range(C):
-            bone_length += bone[i,:,:,:] ** 2
-        bone_length = np.sqrt(bone_length) + 0.0001
-        for i in range(C):
-            bone[C+i,:,:,:] = np.arccos(bone[i,:,:,:] / bone_length)
-        return joint, velocity, bone
+    # def multi_input(self, data):
+    #     C, T, V, M = data.shape
+    #     joint = np.zeros((C*2, T, V, M))
+    #     velocity = np.zeros((C*2, T, V, M))
+    #     bone = np.zeros((C*2, T, V, M))
+    #     joint[:C,:,:,:] = data
+    #     for i in range(V):
+    #         joint[C:,:,i,:] = data[:,:,i,:] - data[:,:,1,:]
+    #     for i in range(T-2):
+    #         velocity[:C,i,:,:] = data[:,i+1,:,:] - data[:,i,:,:]
+    #         velocity[C:,i,:,:] = data[:,i+2,:,:] - data[:,i,:,:]
+    #     for i in range(len(self.conn)):
+    #         bone[:C,:,i,:] = data[:,:,i,:] - data[:,:,self.conn[i],:]
+    #     bone_length = 0
+    #     for i in range(C):
+    #         bone_length += bone[i,:,:,:] ** 2
+    #     bone_length = np.sqrt(bone_length) + 0.0001
+    #     for i in range(C):
+    #         bone[C+i,:,:,:] = np.arccos(bone[i,:,:,:] / bone_length)
+    #     return joint, velocity, bone
 
 
 class NTU_Location_Feeder():
     def __init__(self, data_shape):
-        _, _, self.T, self.V, self.M = data_shape
+        _, self.T, self.V, self.M = data_shape
 
     def load(self, names):
         location = np.zeros((len(names), 2, self.T, self.V, self.M))

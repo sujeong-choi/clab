@@ -9,7 +9,7 @@ GAP = 2
 class NTU_Reader():
     def __init__(self, args, root_folder, transform,  mediapipe_path, **kwargs): # ntu60_path, ntu120_path, 제거 2/9
         self.max_channel = 3
-        self.max_frame = 300
+        self.max_frame = 144
         self.max_joint = 25
         self.max_person = 4
         self.select_person_num = 2
@@ -17,7 +17,7 @@ class NTU_Reader():
         self.progress_bar = not args.no_progress_bar
         self.transform = transform
 
-        self.used_actions = [1,4,5,6,10,12,18,19,28,29,33,49,68,78,91,96,103,104,121,122]
+        self.used_actions = [1,4,5,6,10,18,19,28,29,33,49,68,78,91,96,103,104,121,122]
         self.C2O, self.O2C = dict(), dict()
         for i in range(len(self.used_actions)):
             self.C2O[i]=self.used_actions[i]
@@ -79,7 +79,8 @@ class NTU_Reader():
 
     # Function to read the created skeleton file
     def read_file(self, file_path):
-        skeleton = np.zeros((self.max_person, self.max_frame, self.max_joint, self.max_channel), dtype=np.float32) #(4,300,25,3)
+        original_skeleton = np.zeros((self.max_person, self.max_frame, self.max_joint, self.max_channel), dtype=np.float32) #(4,300,25,3)
+        minus_skeleton = np.zeros((self.max_person, self.max_frame, self.max_joint, self.max_channel), dtype=np.float32) #(4,300,25,3)
         with open(file_path, 'r') as fr:
             frame_num = int(fr.readline()) # 원래 총 frame 수, Total number of frames originally(it will be 60 in our case)
 
@@ -91,9 +92,12 @@ class NTU_Reader():
                     joint_num = int(fr.readline()) #it will be 25
                     for joint in range(joint_num): #for each joint(keypoints)
                         joint_info = fr.readline().strip().split() # extract x,y,z coordinates (ex. [0.231231, -0.23213, 0.1234])
-                        skeleton[person,frame,joint,:] = np.array(joint_info[:self.max_channel], dtype=np.float32) #add x,y,z data to skeleton list
-
-        return skeleton[:,:frame_num,:,:], frame_num    #return skeleton data & frame_num
+                        # print(f"joint_info = {joint_info}")
+                        minus_joint_info = [joint_info[0],joint_info[1], str(-float(joint_info[2]))]
+                        # print(f"minus_joint_info = {minus_joint_info}")
+                        original_skeleton[person,frame,joint,:] = np.array(joint_info[:self.max_channel], dtype=np.float32) #add x,y,z data to skeleton list
+                        minus_skeleton[person,frame,joint,:] = np.array(minus_joint_info[:self.max_channel], dtype=np.float32) #add x,y,z data to skeleton list
+        return original_skeleton[:,:frame_num,:,:],minus_skeleton[:,:frame_num,:,:], frame_num    #return skeleton data & frame_num
 
     def get_nonzero_std(self, s):  # (T,V,C)
         index = s.sum(-1).sum(-1) != 0  # select valid frames
@@ -132,7 +136,6 @@ class NTU_Reader():
             # action_class = int(filename[(action_loc+1):(action_loc+4)])
 
 
-
             # Distinguish train or eval sample
             if self.dataset == 'ntu-xview':
                 is_training_sample = (camera_id in self.training_sample)
@@ -149,23 +152,31 @@ class NTU_Reader():
 
             # Read one sample
             data = np.zeros((self.max_channel, self.max_frame, self.max_joint, self.select_person_num), dtype=np.float32) #(3,300,25,2)
-            skeleton, frame_num = self.read_file(file_path)
+            original_skeleton, minus_skeleton, frame_num = self.read_file(file_path)
             
             # Select person by max energy
             #(Actually, it's a meaningless code because there's only one person,
             # but I used this code when I was learning the model, so I used it to match the format.)
-            energy = np.array([self.get_nonzero_std(skeleton[m]) for m in range(self.max_person)]) 
-            index = energy.argsort()[::-1][:self.select_person_num]
-            skeleton = skeleton[index]
-            data[:,:frame_num,:,:] = skeleton.transpose(3, 1, 2, 0) 
+            skeleton = original_skeleton
+            for i in range(2):
+                energy = np.array([self.get_nonzero_std(skeleton[m]) for m in range(self.max_person)]) 
+                index = energy.argsort()[::-1][:self.select_person_num]
+                skeleton = skeleton[index]
+                data[:,:frame_num,:,:] = skeleton.transpose(3, 1, 2, 0) 
 
-            sample_data.append(data)
-            sample_path.append(file_path)
-            sample_label.append(action_class)  # to 0-indexed
-            sample_length.append(frame_num)
-            if subject_id not in check : check[subject_id]=1
-            else : check[subject_id]+=1
-            count+=1
+                sample_data.append(data)
+                sample_path.append(file_path)
+                sample_label.append(action_class)  # to 0-indexed
+                sample_length.append(frame_num)
+
+                if subject_id not in check : check[subject_id]=1
+                else : check[subject_id]+=1
+                count+=1
+
+                if action_class == 18:
+                    break
+                
+                skeleton = minus_skeleton
         print(f"count = {count}\n")
 
         # Save label
