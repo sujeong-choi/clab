@@ -108,8 +108,6 @@ class VadService(
     }
 
     private inner class Recognizer() {
-        private val VAD_TRESHOLD = 0.5f
-
         private val vadModule: Module by lazy {
             loadModule("vad.jit").also {
                 Log.d("PyTorch", "Vad module has been initialized")
