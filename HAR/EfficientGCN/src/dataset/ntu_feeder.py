@@ -46,7 +46,7 @@ class NTU_Feeder(Dataset):
         # if 'B' in self.inputs:
         #     data_new.append(bone)
         # data_new = np.stack(data_new, axis=0)
-
+        
         data_new = data[:,:self.T,:,:]
         return data_new, label, name #"data_new" is the data used as input to the model.
     

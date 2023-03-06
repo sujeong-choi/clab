@@ -1,26 +1,25 @@
 package com.example.android
 
+import ai.onnxruntime.OrtEnvironment
+import ai.onnxruntime.OrtSession
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
-import android.graphics.*
+import android.graphics.Bitmap
+import android.graphics.SurfaceTexture
 import android.media.MediaMetadataRetriever
+import android.media.MediaRecorder
 import android.net.Uri
 import android.os.Bundle
+import android.os.Environment
 import android.util.AttributeSet
-import android.util.DisplayMetrics
 import android.util.Log
 import android.util.Size
-import android.view.LayoutInflater
-import android.view.MotionEvent
-import android.view.View
-import android.view.ViewGroup
+import android.view.*
 import android.widget.*
-import androidx.annotation.NonNull
-import androidx.camera.camera2.Camera2Config
-import androidx.camera.core.*
-import androidx.camera.core.Camera
+import androidx.camera.core.ExperimentalGetImage
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.video.Recorder
 import androidx.camera.video.VideoCapture
@@ -31,30 +30,64 @@ import androidx.fragment.app.Fragment
 import androidx.navigation.fragment.findNavController
 import com.example.android.databinding.VideoFragmentBinding
 import com.google.common.util.concurrent.ListenableFuture
+import com.google.mediapipe.components.CameraHelper.CameraFacing
+import com.google.mediapipe.components.CameraHelper.OnCameraStartedListener
+import com.google.mediapipe.components.CameraXPreviewHelper
+import com.google.mediapipe.components.ExternalTextureConverter
+import com.google.mediapipe.components.FrameProcessor
+import com.google.mediapipe.formats.proto.LandmarkProto
+import com.google.mediapipe.formats.proto.LandmarkProto.NormalizedLandmarkList
+import com.google.mediapipe.framework.AndroidAssetUtil
+import com.google.mediapipe.framework.Packet
+import com.google.mediapipe.framework.PacketGetter
+import com.google.mediapipe.glutil.EglManager
+import com.google.protobuf.InvalidProtocolBufferException
+import org.jetbrains.kotlinx.multik.api.d3array
+import org.jetbrains.kotlinx.multik.api.mk
+import org.jetbrains.kotlinx.multik.ndarray.data.set
 import org.opencv.android.OpenCVLoader
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.*
 import java.util.concurrent.Executor
 import java.util.concurrent.Executors
+import kotlin.concurrent.thread
 
-/**
- * A simple [Fragment] subclass as the default destination in the navigation.
- */
-class VideoFragment : Fragment(R.layout.video_fragment), CameraXConfig.Provider {
+
+class GlobalVars {
+    companion object {
+        @JvmField
+        // setup onnx model
+        var ortEnv: OrtEnvironment = OrtEnvironment.getEnvironment()
+        val ortoption = OrtSession.SessionOptions()
+    }
+}
+
+class VideoFragment : Fragment(R.layout.video_fragment) {
     // view variables
-    lateinit var binding: VideoFragmentBinding
+    private lateinit var binding: VideoFragmentBinding
     private lateinit var videoView: VideoView
     private lateinit var timeLapseView: VideoView
     private lateinit var previewView: PreviewView
     private lateinit var previewViewSmall: ImageView
     private lateinit var recordButton: Button
-    private lateinit var recordText: TextView
+    private lateinit var detectButton: Button
+    private lateinit var frameCounter: TextView
+    private lateinit var testVad: Button
+    private lateinit var recordingCircle: ImageView
+    private lateinit var harLabel: TextView
     private lateinit var rectOverlay: RectOverlay
     private lateinit var mediaController: MediaController
+    private lateinit var loadingView: FrameLayout
+    private lateinit var previewDisplayView: SurfaceView
+    private lateinit var previewFrameTexture: SurfaceTexture
 
     // helper and util variables
     private lateinit var commonUtils: CommonUtils
     private lateinit var harHelper: HARHelper
     private lateinit var pfdHelper: PFDHelper
+    private lateinit var pfdSession: OrtSession
+    private lateinit var harSession: OrtSession
 
     // camera variables
     private lateinit var cameraProviderFuture: ListenableFuture<ProcessCameraProvider>
@@ -62,9 +95,31 @@ class VideoFragment : Fragment(R.layout.video_fragment), CameraXConfig.Provider 
     private val executor: Executor = Executors.newSingleThreadExecutor()
     private var videoCapture: VideoCapture<Recorder>? = null
     private lateinit var videoFile: File
+    private var mediaRecorder: MediaRecorder? = null
+
+    // mediapipe variables
+    private lateinit var cameraHelper: CameraXPreviewHelper
+    private lateinit var applicationInfo: ApplicationInfo
+    private lateinit var eglManager: EglManager
+    private lateinit var converter: ExternalTextureConverter
+    private lateinit var processor: FrameProcessor
 
     // class variables
+    private var isLoading: Boolean = false
     private var isRecording: Boolean = false
+    private var isKeypointSelected: Boolean = false
+    private var isCameraFacingFront: Boolean = false
+    private var enableHarInference: Boolean = false
+    private var timelapseThread: Thread? = null
+    private var globalPfdResult: PfdResult = PfdResult()
+    private var globalLandmark: NormalizedLandmarkList? = null
+    private var globalBitmapStore: MutableList<Bitmap> = mutableListOf()
+    private var recordingState: String = "Other"
+    private var previewSize: Size? = null
+    private var frameCount = 1
+    private var pfdMsTimestamp: Long = System.currentTimeMillis()
+    private var framesSkeleton = mk.d3array(144, 25, 3) { 0.0f }
+    private var initialCapture: Boolean = true
     private val REQUIRED_PERMISSIONS: Array<String> =
         arrayOf(
             "android.permission.CAMERA",
@@ -73,7 +128,7 @@ class VideoFragment : Fragment(R.layout.video_fragment), CameraXConfig.Provider 
             "android.permission.RECORD_AUDIO"
         )
     private val REQUEST_CODE_PERMISSION = 101
-    private val TAG = "MAIN"
+    private val TAG = "VIDEOFRAG"
 
     // Create a MediaMetadataRetriever
 
@@ -92,12 +147,9 @@ class VideoFragment : Fragment(R.layout.video_fragment), CameraXConfig.Provider 
         }
     }
 
-    override fun getCameraXConfig(): CameraXConfig {
-        return Camera2Config.defaultConfig()
-    }
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+    init {
+        System.loadLibrary("mediapipe_jni")
+        System.loadLibrary("opencv_java3")
     }
 
     override fun onCreateView(
@@ -109,31 +161,10 @@ class VideoFragment : Fragment(R.layout.video_fragment), CameraXConfig.Provider 
         return binding.root
     }
 
-    @ExperimentalGetImage
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        binding.timelapseButton.setOnClickListener {
-            findNavController().navigate(R.id.action_VideoFragment_to_TimelapseFragment)
-        }
-
-        binding.selectButton.setOnClickListener {
-            val intent = Intent(Intent.ACTION_GET_CONTENT)
-            intent.type = "video/*"
-            startActivityForResult(intent, VIDEO_REQUEST_CODE)
-        }
-
-        binding.liveButton.setOnClickListener {
-            videoView.stopPlayback()
-            timeLapseView.stopPlayback()
-
-            videoView.visibility = View.GONE
-            timeLapseView.visibility = View.GONE
-            previewView.visibility = View.VISIBLE
-            previewViewSmall.visibility = View.VISIBLE
-        }
-
-        // Initialize OpenCV
+        // init OpenCV
         if (!OpenCVLoader.initDebug()) {
             Toast.makeText(requireContext(), "Failed to initialize OpenCV", Toast.LENGTH_LONG)
                 .show()
@@ -144,14 +175,166 @@ class VideoFragment : Fragment(R.layout.video_fragment), CameraXConfig.Provider 
         timeLapseView = binding.timelapseView
         previewView = binding.previewView
         previewViewSmall = binding.previewViewSmall
+        frameCounter = binding.frameCounter
         recordButton = binding.recordButton
-        recordText = binding.recordText
+        detectButton = binding.detectFrameButton
+        harLabel = binding.harLabel
+        testVad = binding.testVad
+        recordingCircle = binding.recordingCircle
         rectOverlay = binding.rectOverlay
+        loadingView = binding.loadingContainer
 
+        // init helper and util classes
         pfdHelper = PFDHelper(requireContext())
         harHelper = HARHelper(requireContext())
         commonUtils = CommonUtils(requireContext())
 
+        // setup fragment click listeners
+        setClickListeners()
+
+        // init mediapipe
+        initMediaPipe()
+
+        // allow dragging for android
+        setupDraggablePreview()
+
+        // disable record button until painting is detected
+        recordButton.isEnabled = false
+
+        // init video views
+        mediaController = CustomMediaController(activity)
+
+        mediaController.setAnchorView(videoView)
+        videoView.setMediaController(mediaController)
+        timeLapseView.setMediaController(mediaController)
+
+        // create output video file
+//        videoFile = createVideoFile()
+    }
+
+    private fun initMediaPipe() {
+        previewDisplayView = SurfaceView(requireContext())
+        setupPreviewDisplayView()
+
+        try {
+            applicationInfo = requireContext().packageManager.getApplicationInfo(
+                requireContext().packageName,
+                PackageManager.GET_META_DATA
+            )
+        } catch (e: PackageManager.NameNotFoundException) {
+            Log.e(TAG, "Cannot find application info: $e")
+        }
+
+        try {
+            AndroidAssetUtil.initializeNativeAssetManager(requireContext())
+            eglManager = EglManager(null)
+
+            processor = FrameProcessor(
+                requireContext(),
+                eglManager.nativeContext,
+                applicationInfo.metaData.getString("binaryGraphName"),
+                applicationInfo.metaData.getString("inputVideoStreamName"),
+                applicationInfo.metaData.getString("outputVideoStreamName")
+            )
+
+            processor
+                .videoSurfaceOutput
+                .setFlipY(true)
+
+            processor.addPacketCallback(
+                applicationInfo.metaData.getString("outputLandmarksStreamNameWorld")
+            ) { packet: Packet ->
+                val landmarksRaw: ByteArray = PacketGetter.getProtoBytes(packet)
+                val poseLandmarks: LandmarkProto.LandmarkList =
+                    LandmarkProto.LandmarkList.parseFrom(landmarksRaw)
+
+                if (enableHarInference) {
+                    if (frameCount < 60) {//Collect Skeleton data for 60 frames or 4 seconds(4 seconds not yet implemented).
+                        framesSkeleton[frameCount] =
+                            harHelper.saveSkeletonData(poseLandmarks) //save landmarks in array shape (144,25,3)
+                        frameCount++
+                    } else {
+                        // if hand isn't inside
+                        framesSkeleton[frameCount] = harHelper.saveSkeletonData(poseLandmarks)
+
+
+                        // TODO: move this inference to another thread
+                        val input = harHelper.convertSkeletonData(framesSkeleton)
+
+                        // send to model
+                        val label: String = harHelper.harInference(input, harSession)
+
+                        if (label.contains("Other")) recordingState = "Other"
+                        else if (label.contains("Painting")) recordingState = "Painting"
+                        else if (label.contains("Interview")) recordingState = "Interview"
+
+                        requireActivity().runOnUiThread(java.lang.Runnable {
+                            harLabel.text = label
+                        })
+
+                        clearHarSkeleton()
+                    }
+                }
+            }
+
+            processor.addPacketCallback(
+                applicationInfo.metaData.getString("outputLandmarksStreamName")
+            ) { packet: Packet ->
+                val landmarksRaw = PacketGetter.getProtoBytes(packet)
+                try {
+                    val landmarks = NormalizedLandmarkList.parseFrom(landmarksRaw)
+
+                    if (landmarks != null) {
+                        globalLandmark = landmarks
+                    }
+
+
+                } catch (e: InvalidProtocolBufferException) {
+                    Log.e(TAG, "Couldn't Exception received - $e")
+                    return@addPacketCallback
+                }
+            }
+
+            setupOnnxModel()
+        } catch (e: Exception) {
+            e.message?.let { Log.v(TAG, it) }
+        }
+
+        converter = ExternalTextureConverter(
+            eglManager.context, 2
+        )
+        converter.setFlipY(true)
+        converter.setConsumer(processor)
+
+        // check camera permission and start camera
+        if (!checkPermissions()) {
+            ActivityCompat.requestPermissions(
+                requireActivity(),
+                REQUIRED_PERMISSIONS,
+                REQUEST_CODE_PERMISSION
+            )
+        } else {
+            startCamera()
+        }
+    }
+
+    private fun setupOnnxModel() {
+        val option = GlobalVars.ortoption
+        option.setIntraOpNumThreads(4)
+        option.addNnapi()
+
+        pfdSession = GlobalVars.ortEnv.createSession(commonUtils.readModel(ModelType.PFD), option)
+        harSession = GlobalVars.ortEnv.createSession(commonUtils.readModel(ModelType.HAR))
+    }
+
+    private fun clearHarSkeleton() {
+        framesSkeleton =
+            mk.d3array(144, 25, 3) { 0.0f } // reinitialize landmarks array
+        frameCount = 1
+    }
+
+
+    private fun setupDraggablePreview() {
         //set bg color for previewViewSmall
         previewViewSmall.setBackgroundColor(
             ContextCompat.getColor(
@@ -160,7 +343,6 @@ class VideoFragment : Fragment(R.layout.video_fragment), CameraXConfig.Provider 
             )
         )
 
-        // allow dragging for android
         // TODO: Disable drag outside parent container area
         with(timeLapseView) {
             setOnTouchListener(object : View.OnTouchListener {
@@ -242,36 +424,128 @@ class VideoFragment : Fragment(R.layout.video_fragment), CameraXConfig.Provider 
                 }
             })
         }
+    }
 
-        // init media controller
+    private fun setClickListeners() {
+        // timelapse and upload button listeners
+        binding.timelapseButton.setOnClickListener {
+            findNavController().navigate(R.id.action_VideoFragment_to_TimelapseFragment)
+        }
 
-        mediaController = CustomMediaController(activity)
+        testVad.setOnClickListener {
+            harHelper.vadInference()
+        }
 
-        mediaController.setAnchorView(videoView)
-        videoView.setMediaController(mediaController)
-        timeLapseView.setMediaController(mediaController)
+        binding.selectButton.setOnClickListener {
+            val intent = Intent(Intent.ACTION_GET_CONTENT)
+            intent.type = "video/*"
+            startActivityForResult(intent, VIDEO_REQUEST_CODE)
+        }
+
+        // live button listeners
+        binding.liveButton.setOnClickListener {
+            videoView.stopPlayback()
+            timeLapseView.stopPlayback()
+
+            videoView.visibility = View.GONE
+            timeLapseView.visibility = View.GONE
+            previewView.visibility = View.VISIBLE
+            previewViewSmall.visibility = View.VISIBLE
+        }
 
         // live start and stop on click listeners
         recordButton.setOnClickListener {
-            isRecording = !isRecording
+            rectOverlay.clear()
+            toggleRecording()
+
             if (isRecording) {
-                recordText.visibility = View.VISIBLE
-                recordButton.text = "STOP"
-                previewViewSmall.visibility = View.VISIBLE
-
                 // start video recording
-                startRecording()
+                // recording thread
+                timelapseThread = thread {
+                    while (isRecording) {
+                        commonUtils.getFrameBitmap(previewDisplayView) { bitmap: Bitmap? ->
+                            // update preview screen if hand isn't in frame
+                            drawPreview(globalPfdResult)
+                            bitmap?.recycle()
+                        }
+                        Thread.sleep(1000)
+                    }
+                }
 
+//                drawPreview(globalPfdResult)
             } else {
-                recordText.visibility = View.GONE
-                recordButton.text = "RECORD"
-                previewViewSmall.visibility = View.GONE
-
                 // stop video recording
-                stopRecording()
-                rectOverlay.clear()
+
+                // stop timelapse thread
+                timelapseThread?.join()
+
+                // reset har label
+                harLabel.text = "No Activity"
+
+                // save timelapse
+                pfdHelper.saveVideoFromBitmaps(
+                    globalBitmapStore
+                )
+
             }
         }
+
+        detectButton.setOnClickListener {
+            try {
+                commonUtils.getFrameBitmap(previewDisplayView) { bitmap: Bitmap? ->
+                    requireActivity().runOnUiThread(java.lang.Runnable {
+                        // show loading spinner
+                        loadingView.visibility = View.VISIBLE
+                    })
+
+                    val pfdResult: PfdResult? =
+                        bitmap?.let { it1 -> pfdHelper.pfdInference(it1, pfdSession) }
+
+                    requireActivity().runOnUiThread(java.lang.Runnable {
+                        // hide loading spinner
+                        loadingView.visibility = View.GONE
+                    })
+
+                    // for memory optimization
+                    bitmap?.recycle()
+
+                    if (pfdResult?.size != 0) {
+                        globalPfdResult = pfdResult!!
+                        globalPfdResult = pfdResult!!
+                        isKeypointSelected = true
+
+                        // draw keyPoints on top of previewView
+                        drawKeypoints(globalPfdResult)
+
+                        requireActivity().runOnUiThread(java.lang.Runnable {
+                            recordButton.isEnabled = true
+                        })
+
+                    } else {
+                        Toast.makeText(
+                            requireContext(),
+                            "Painting not detected!",
+                            Toast.LENGTH_LONG
+                        )
+                            .show()
+                    }
+                }
+
+            } catch (e: Exception) {
+                // hide loading spinner
+                loadingView.visibility = View.GONE
+                e.message?.let { it1 -> Log.v("Error", it1) }
+            }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        converter = ExternalTextureConverter(
+            eglManager.context, 2
+        )
+        converter.setFlipY(true)
+        converter.setConsumer(processor)
 
         // check camera permission and start camera
         if (!checkPermissions()) {
@@ -280,21 +554,69 @@ class VideoFragment : Fragment(R.layout.video_fragment), CameraXConfig.Provider 
                 REQUIRED_PERMISSIONS,
                 REQUEST_CODE_PERMISSION
             )
+        } else {
+            startCamera()
         }
-
-        cameraProviderFuture = ProcessCameraProvider.getInstance(requireContext())
-        cameraProviderFuture.addListener(Runnable {
-            // Camera provider is now guaranteed to be available
-            val cameraProvider = cameraProviderFuture.get()
-            startCamera(cameraProvider)
-
-        }, ContextCompat.getMainExecutor(requireContext()))
-
-        // create output video file
-//        videoFile = createVideoFile()
     }
 
+    override fun onPause() {
+        super.onPause()
+        converter.close()
 
+        // Hide preview display until we re-open the camera again.
+        previewDisplayView.visibility = View.GONE
+    }
+
+    private fun toggleLoading() {
+        if (isLoading) {
+
+        } else if (!isLoading) {
+
+        }
+    }
+
+    private fun toggleRecording() {
+        isRecording = !isRecording
+
+        if (isRecording) {
+            recordingCircle.visibility = View.VISIBLE
+            frameCounter.visibility = View.VISIBLE
+            frameCounter.text = "0"
+            harLabel.visibility = View.VISIBLE
+            previewViewSmall.visibility = View.VISIBLE
+            recordButton.text = "STOP"
+
+            // disable detect button while recording
+            detectButton.isEnabled = false
+
+            // start HAR inference
+            enableHarInference = true
+
+            // start vad prediction
+            harHelper.vadInference()
+
+            startRecording()
+            clearHarSkeleton()
+        } else if (!isRecording) {
+            recordingCircle.visibility = View.GONE
+            frameCounter.visibility = View.GONE
+            harLabel.visibility = View.GONE
+            previewViewSmall.visibility = View.GONE
+            recordButton.text = "RECORD"
+
+            // enable detect button while recording
+            detectButton.isEnabled = true
+
+            // start HAR inference
+            enableHarInference = false
+
+            // stop vad prediction
+            harHelper.vadInference()
+
+            stopRecording()
+            clearHarSkeleton()
+        }
+    }
 
     private fun checkPermissions(): Boolean {
         for (permission in REQUIRED_PERMISSIONS) {
@@ -307,11 +629,41 @@ class VideoFragment : Fragment(R.layout.video_fragment), CameraXConfig.Provider 
         return true
     }
 
-    private fun startRecording() {
+    private fun setupPreviewDisplayView() {
+        previewDisplayView.visibility = View.GONE
+        val viewGroup: ViewGroup = binding.surfaceFrame
+        viewGroup.addView(previewDisplayView)
 
-    }
+        previewDisplayView
+            .holder
+            .addCallback(
+                object : SurfaceHolder.Callback {
+                    override fun surfaceChanged(
+                        holder: SurfaceHolder,
+                        format: Int,
+                        width: Int,
+                        height: Int
+                    ) {
+                        val viewSize = Size(width, height)
+                        previewSize = viewSize
+                        val displaySize = cameraHelper.computeDisplaySizeFromViewSize(viewSize)
+                        val isCameraRotated = cameraHelper.isCameraRotated
 
-    private fun stopRecording() {
+                        converter.setSurfaceTextureAndAttachToGLContext(
+                            previewFrameTexture,
+                            if (isCameraRotated) displaySize.height else displaySize.width,
+                            if (isCameraRotated) displaySize.width else displaySize.height
+                        )
+                    }
+
+                    override fun surfaceCreated(holder: SurfaceHolder) {
+                        processor.videoSurfaceOutput.setSurface(holder.surface)
+                    }
+
+                    override fun surfaceDestroyed(holder: SurfaceHolder) {
+                        processor.videoSurfaceOutput.setSurface(null)
+                    }
+                })
 
     }
 
@@ -349,34 +701,34 @@ class VideoFragment : Fragment(R.layout.video_fragment), CameraXConfig.Provider 
 
             // pass all video frames to pfd inference function
             // fix only pass one frame
-            val output = pfdHelper.onnxInference(videoFrames[0])
+            val output = pfdHelper.pfdInference(videoFrames[0], pfdSession)
 
             // TODO: draw keypoints on top of videoView
 
             // perform perspective transformation on frames
-            val transformedBitmaps: List<Bitmap> =
-                pfdHelper.perspectiveTransformation(videoFrames, output.keypoint.value[0])
-
-            // save keyPoints as a timelapse
-            val outputDir = requireContext().filesDir // or context.cacheDir
-
-            val width =
-                mediaMetadataRetriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)!!
-                    .toInt()
-            val height =
-                mediaMetadataRetriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)!!
-                    .toInt()
-            val frameRate =
-                mediaMetadataRetriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_CAPTURE_FRAMERATE)!!
-                    .toInt()
-
-            pfdHelper.saveVideoFromBitmaps(
-                transformedBitmaps,
-                outputDir.path,
-                width,
-                height,
-                frameRate
-            )
+//            val transformedBitmaps: List<Bitmap> =
+//                pfdHelper.perspectiveTransformation(videoFrames, output.keypoint.value[0])
+//
+//            // save keyPoints as a timelapse
+//            val outputDir = requireContext().filesDir // or context.cacheDir
+//
+//            val width =
+//                mediaMetadataRetriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)!!
+//                    .toInt()
+//            val height =
+//                mediaMetadataRetriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)!!
+//                    .toInt()
+//            val frameRate =
+//                mediaMetadataRetriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_CAPTURE_FRAMERATE)!!
+//                    .toInt()
+//
+//            pfdHelper.saveVideoFromBitmaps(
+//                transformedBitmaps,
+//                outputDir.path,
+//                width,
+//                height,
+//                frameRate
+//            )
 
             timeLapseView.visibility = View.VISIBLE
             timeLapseView.setVideoURI(videoUri)
@@ -384,130 +736,146 @@ class VideoFragment : Fragment(R.layout.video_fragment), CameraXConfig.Provider 
         }
     }
 
-    @ExperimentalGetImage
-    private fun startCamera(@NonNull cameraProvider: ProcessCameraProvider) {
-        // Set up the preview use case to display camera preview.
-        val preview = Preview.Builder().build()
+    private fun startCamera() {
+        cameraHelper = CameraXPreviewHelper()
+        cameraHelper.setOnCameraStartedListener(
+            OnCameraStartedListener { surfaceTexture ->
+                previewFrameTexture = surfaceTexture!!
+                // Make the display view visible to start showing the preview.
+                previewDisplayView.visibility = View.VISIBLE
+            })
 
-        val cameraSelector: CameraSelector = CameraSelector.Builder()
-            .requireLensFacing(CameraSelector.LENS_FACING_BACK).build()
-        preview.setSurfaceProvider(previewView.surfaceProvider)
+        val cameraFacing = if (isCameraFacingFront) CameraFacing.FRONT else CameraFacing.BACK
+        cameraHelper.startCamera(requireActivity(), cameraFacing,  /*unusedSurfaceTexture=*/null)
 
         val recorder = Recorder.Builder()
             .setExecutor(executor)
             .build()
+
         videoCapture = VideoCapture.withOutput(recorder)
+    }
 
-        // Get the display metrics
-        val displayMetrics = DisplayMetrics()
-        requireActivity().windowManager.defaultDisplay.getMetrics(displayMetrics)
-
-        // Calculate the screen size in pixels
-        val screenWidthPx = displayMetrics.widthPixels
-        val screenHeightPx = displayMetrics.heightPixels
-
-        // Set the target resolution based on the screen size
-        val targetResolution = Size(screenWidthPx, screenHeightPx)
-
-        val imageAnalysis: ImageAnalysis =
-            ImageAnalysis.Builder().setTargetResolution(targetResolution).build()
-
-        var lastAnalyzedTimestamp = 0L
-        val predictionInterval = 10000L
-
-        imageAnalysis.setAnalyzer(executor, ImageAnalysis.Analyzer { imageProxy ->
-            val currentTimestamp = System.currentTimeMillis()
-
-            if (isRecording && currentTimestamp - lastAnalyzedTimestamp >= predictionInterval) {
-                lastAnalyzedTimestamp = System.currentTimeMillis()
-
-                try {
-                    // initialize skeleton extractor for har
-//                    harHelper.detectInImage(
-//                        InputImage.fromMediaImage(
-//                            imageProxy.image!!,
-//                            imageProxy.imageInfo.rotationDegrees
-//                        )
-//                    )
-
-//                    harHelper.harInference(InputImage.fromMediaImage(
-//                        imageProxy.image!!,
-//                        imageProxy.imageInfo.rotationDegrees
-//                    ))
-                } catch (e: Exception) {
-                    e.message?.let { Log.v("Error", it) }
-                }
-
-
-                try {
-                    // TODO: stop passing around activity context like this
-
-                    val imgBitmap = commonUtils.imageProxyToBitmap(imageProxy)
-                    // val pfdResult: PfdResult = pfdHelper.onnxInference(imgBitmap)
-
-                    // call draw function to draw keypoints on previewViewSmall
-                    // drawPreview(pfdResult.keypoint.value[0], imgBitmap)
-                } catch (e: Exception) {
-                    print("Exception Occurred: ${e.message}")
-                }
-            }
-
-            // close imageProxy
-            imageProxy.close()
-        })
-
-//        val viewPort: ViewPort = previewView.viewPort ?: Rect(0, 0, 720, 1280)
-        val useCaseGroup = UseCaseGroup.Builder()
-//            .setViewPort(viewPort)
-            .addUseCase(preview)
-            .addUseCase(imageAnalysis)
-            .build()
-
+    private fun startRecording() {
         try {
-            // Bind use cases to camera
-            val camera: Camera =
-                cameraProvider.bindToLifecycle(
-                    this,
-                    cameraSelector,
-                    useCaseGroup,
-//                    videoCapture,
-                )
-        } catch (exc: Exception) {
-            Log.e(TAG, "Use case binding failed", exc)
+            mediaRecorder = MediaRecorder(requireContext())
+            mediaRecorder?.apply {
+                setVideoSource(MediaRecorder.VideoSource.SURFACE)
+                setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+                setOutputFile(getVideoFilePath())
+//                setVideoEncodingBitRate(10000000)
+                setVideoFrameRate(30)
+                setVideoSize(previewDisplayView.width, previewDisplayView.height)
+                setVideoEncoder(MediaRecorder.VideoEncoder.H264)
+            }
+            mediaRecorder?.setInputSurface(Surface(previewFrameTexture))
+            mediaRecorder?.prepare()
+            mediaRecorder?.start()
+        } catch (e: Exception) {
+            Log.v(TAG, "")
         }
     }
 
-    @ExperimentalGetImage
-    private fun drawPreview(keyPoints: KeypointType<Float>, imgBitmap: Bitmap) {
+    private fun stopRecording() {
+        try {
+            mediaRecorder?.apply {
+                stop()
+//                release()
+            }
+//            mediaRecorder = null
+
+            Toast.makeText(requireContext(), "Video recording has been saved!", Toast.LENGTH_LONG)
+                .show()
+        } catch (e: Exception) {
+            Log.v(TAG, "")
+        }
+    }
+
+    private fun getVideoFilePath(): String {
+        val dateFormat = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault())
+        val currentDateAndTime: String = dateFormat.format(Date())
+        val fileName = "$currentDateAndTime.mp4"
+        val fileDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM)
+//        val fileDir = requireContext().getExternalFilesDir(null)?.absolutePath ?: ""
+        return "$fileDir/$fileName"
+    }
+
+
+    private fun drawPreview(pfdResult: PfdResult) {
         previewView.post {
             try {
-                val canvas = Canvas(imgBitmap) // create Canvas object from Bitmap
+                val keyPoints = pfdResult.keypoint.value
+                val bbox = pfdResult.bbox.value
 
-                // draw keypoints over image
-                val radius = 30f
+                if (keyPoints.isEmpty()) {
+                    Toast.makeText(requireContext(), "Painting not detected!", Toast.LENGTH_LONG)
+                        .show()
+                } else {
+                    commonUtils.getFrameBitmap(previewDisplayView) { bitmap: Bitmap? ->
+                        val isHandInFrame = pfdHelper.isHandInFrame(
+                            bitmap!!,
+                            globalPfdResult.bbox.value[0],
+                            globalLandmark
+                        )
 
-                for (keypoint in keyPoints.value) {
-                    val kx = keypoint[0].toInt()
-                    val ky = keypoint[1].toInt()
+                        // perform perspective transformation and show image on previewViewSmall
+                        // TODO: Replace this if condition when har is more accurate
+                        if (!isHandInFrame && (recordingState == "Painting" || initialCapture)) {
+//                        if (!isHandInFrame) {
+                            requireActivity().runOnUiThread(java.lang.Runnable {
+                                val transformedBitmap = bitmap.let {
+                                    pfdHelper.perspectiveTransformation(
+                                        it,
+                                        keyPoints[0]
+                                    )
+                                }
 
-                    val paint = Paint().apply {
-                        color = Color.RED
+                                previewViewSmall.setImageBitmap(transformedBitmap)
+                                previewViewSmall.invalidate()
+
+                                initialCapture = false
+
+                                // add bitmap to global
+                                globalBitmapStore.add(bitmap.copy(bitmap.config, true))
+
+                                val plusOne: String =
+                                    (frameCounter.text.toString().toInt() + 1).toString()
+                                frameCounter.text = plusOne
+                            })
+                        } else if (isHandInFrame && recordingState == "Painting") {
+//                        else {
+                            requireActivity().runOnUiThread(java.lang.Runnable {
+                                Toast.makeText(
+                                    requireContext(),
+                                    "Hands in Painting!",
+                                    Toast.LENGTH_SHORT
+                                )
+                                    .show()
+//                                toggleRecording()
+                            })
+                        }
                     }
-                    canvas.drawCircle(kx.toFloat(), ky.toFloat(), radius, paint)
+
                 }
+            } catch (e: Exception) {
+                e.message?.let { Log.v("Error", it) }
+            }
 
-                Log.v("Local TAG", keyPoints.toString())
+            // set the modified Bitmap as the image for the ImageView
+        }
+    }
 
-                rectOverlay.drawOverlay(keyPoints)
+    private fun drawKeypoints(pfdResult: PfdResult) {
+        previewView.post {
+            try {
+                val keyPoints = pfdResult.keypoint.value
+                val bbox = pfdResult.bbox.value
 
-                // perform perspective transformation and show image on previewViewSmall
-                previewViewSmall.setImageBitmap(
-                    pfdHelper.perspectiveTransformation(
-                        imgBitmap,
-                        keyPoints
-                    )
-                )
-                previewViewSmall.invalidate()
+                if (keyPoints.isEmpty()) {
+                    Toast.makeText(requireContext(), "Painting not detected!", Toast.LENGTH_LONG)
+                        .show()
+                } else {
+                    rectOverlay.drawKeypoints(keyPoints[0], bbox[0], enableBbox = true)
+                }
             } catch (e: Exception) {
                 e.message?.let { Log.v("Error", it) }
             }
@@ -523,7 +891,9 @@ class VideoFragment : Fragment(R.layout.video_fragment), CameraXConfig.Provider 
     override fun onDestroy() {
         super.onDestroy()
 
-        pfdHelper.destroyModel()
-        harHelper.destroyModel()
+//        pfdSession.close()
+//        harSession.close()
+//        pfdHelper.destroyModel()
+//        harHelper.destroyModel()
     }
 }

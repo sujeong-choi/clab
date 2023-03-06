@@ -14,13 +14,13 @@ class Torch2Onnx(Processor):
         dummy_out = torch_model(dummy_input)
         # convert pytorch to onnx
         
-        # torch.onnx.export(torch_model.module, dummy_input, self.args.onnx_fname, verbose=True, opset_version=12)
-        # print("success to convert pytorch model to onnx model\n")
+        torch.onnx.export(torch_model.module, dummy_input, self.args.onnx_fname, verbose=True, opset_version=12)
+        print("success to convert pytorch model to onnx model\n")
 
 
-        onnx_model = onnx.load("convert/data/out.onnx")
+        onnx_model = onnx.load(self.args.onnx_fname)
         onnx.checker.check_model(onnx_model)
-        ort_session = onnxruntime.InferenceSession("convert/data/out.onnx")
+        ort_session = onnxruntime.InferenceSession(self.args.onnx_fname)
         ort_inputs = {ort_session.get_inputs()[0].name: self.to_numpy(dummy_input)}
         ort_outs = ort_session.run(None, ort_inputs)
         

@@ -14,6 +14,7 @@ class EfficientGCN(nn.Module):
         num_input = 3
         num_channel = 6
         self.conn = torch.tensor([0,0,1,2,0,4,5,3,6,9,9, 12,24,11,12,13,14,15,16,15,16,15,16,11,23]).to("cuda:0")
+        
         # input branches
         self.input_branches = nn.ModuleList([EfficientGCN_Blocks(
             init_channel = stem_channel,
@@ -36,7 +37,7 @@ class EfficientGCN(nn.Module):
 
         # init parameters
         init_param(self.modules())
-        
+
     #add preprocess(multi_input() in ntu_feeder.py)
     def preprocess(self, x):
         device = "cuda" if x.is_cuda else "cpu"
@@ -72,6 +73,7 @@ class EfficientGCN(nn.Module):
     def forward(self, x):
         #add preprocess(multi_input() in ntu_feeder.py)
         x = self.preprocess(x)
+        
         N, I, C, T, V, M = x.size()
         x = x.permute(1, 0, 5, 2, 3, 4).contiguous().view(I, N*M, C, T, V)
 
