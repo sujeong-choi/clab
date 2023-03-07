@@ -75,14 +75,14 @@ class PFDHelper(val context: Context) {
     }
 
 
-    fun pfdInference(bitmap: Bitmap, ortSession: OrtSession?): PfdResult {
+    fun pfdInference(bitmap: Bitmap, pfdSession: OrtSession?): PfdResult {
         // output object
         val sortedOutput = mutableMapOf<String, Any>()
 
         // resize bitmap for memory optimization, disabled to avoid model accuracy
 //        val resizedBitmap: Bitmap = resizeBitmap(bitmap, targetSize)
 
-        val inputNameIterator = ortSession?.inputNames!!.iterator()
+        val inputNameIterator = pfdSession?.inputNames!!.iterator()
         val inputName0: String = inputNameIterator.next()
         val inputName1: String = inputNameIterator.next()
         val shape = longArrayOf(3, bitmap.height.toLong(), bitmap.width.toLong())
@@ -103,9 +103,9 @@ class PFDHelper(val context: Context) {
 
             try {
 
-                val output = ortSession.run(inputMap)
+                val output = pfdSession.run(inputMap)
 
-                val outputNames = ortSession.outputNames.toList()
+                val outputNames = pfdSession.outputNames.toList()
 
                 /*
                 * Output format from the model is as follows
@@ -287,34 +287,46 @@ class PFDHelper(val context: Context) {
     ): Boolean {
 
         val frameList: Array<Bitmap> = retrieveAndDeleteBitmapsFromInternalStorage(timeLapseId, totalFrames)
-        val file = File(getVideoFilePath("timelapse"))
-        var out: FileChannelWrapper? = null
-        var isCompleted = false
 
-        val tlWidth = if (frameList[0].width % 2 == 0) frameList[0].width else frameList[0].width - 1
-        val tlHeight = if (frameList[0].height % 2 == 0) frameList[0].height else frameList[0].height - 1
+        if(frameList.size > 30) {
+            val file = File(getVideoFilePath("timelapse"))
+            var out: FileChannelWrapper? = null
+            var isCompleted = false
 
-        val timelapseSaveThread = thread {
-            try {
-                out = NIOUtils.writableFileChannel(file.absolutePath)
-                val enc =
-                    AndroidSequenceEncoder.createSequenceEncoder(file, fps)
+            val tlWidth =
+                if (frameList[0].width % 2 == 0) frameList[0].width else frameList[0].width - 1
+            val tlHeight =
+                if (frameList[0].height % 2 == 0) frameList[0].height else frameList[0].height - 1
 
-                for (frame in frameList) {
-                    val resizedBitmap = Bitmap.createScaledBitmap(frame, tlWidth, tlHeight, false)
-                    enc.encodeImage(resizedBitmap)
+            val timelapseSaveThread = thread {
+                try {
+                    out = NIOUtils.writableFileChannel(file.absolutePath)
+                    val enc =
+                        AndroidSequenceEncoder.createSequenceEncoder(file, fps)
+
+                    for (frame in frameList) {
+                        val resizedBitmap =
+                            Bitmap.createScaledBitmap(frame, tlWidth, tlHeight, false)
+                        enc.encodeImage(resizedBitmap)
+                    }
+
+                    enc.finish()
+
+                    // recycle all timelapse frames to freeup resources
+                    frameList.map { bitmap: Bitmap -> bitmap.recycle() }
+
+                    isCompleted = true
+                } catch (e: Exception) {
+                    e.message?.let { Log.v("PFD", it) }
+                } finally {
+                    NIOUtils.closeQuietly(out)
                 }
-
-                enc.finish()
-                isCompleted = true
-            } catch (e: Exception) {
-                e.message?.let { Log.v("PFD", it) }
-            } finally {
-                NIOUtils.closeQuietly(out)
             }
+
+            timelapseSaveThread.join()
+            return isCompleted
         }
-        timelapseSaveThread.join()
-        return isCompleted
+        return false
     }
 
     private fun getVideoFilePath(postfix: String = ""): String {

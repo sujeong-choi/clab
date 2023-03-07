@@ -36,10 +36,10 @@ class HARHelper(val context: Context) {
     }
 
 
-    fun harInference(inputSkeleton: MultiArray<Float, DN>, harSession: OrtSession): String {
+    fun harInference(inputSkeleton: MultiArray<Float, DN>, harSession: OrtSession?): String {
         val shape = longArrayOf(1, 3, 144, 25, 2)
 
-        val inputNameIterator = harSession.inputNames!!.iterator()
+        val inputNameIterator = harSession?.inputNames!!.iterator()
         val inputName0: String = inputNameIterator.next()
 
 

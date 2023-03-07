@@ -14,8 +14,6 @@ import android.util.Log
 import android.util.Size
 import android.view.*
 import android.widget.*
-import androidx.camera.video.Recorder
-import androidx.camera.video.VideoCapture
 import androidx.camera.view.PreviewView
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -36,8 +34,6 @@ import com.google.mediapipe.glutil.EglManager
 import com.google.protobuf.InvalidProtocolBufferException
 import org.jetbrains.kotlinx.multik.ndarray.data.D2Array
 import org.opencv.android.OpenCVLoader
-import java.util.concurrent.Executor
-import java.util.concurrent.Executors
 import kotlin.concurrent.fixedRateTimer
 import kotlin.concurrent.thread
 
@@ -77,12 +73,8 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
     private lateinit var harHelper: HARHelper
     private lateinit var pfdHelper: PFDHelper
     private var pfdSession: OrtSession? = null
-    private lateinit var harSession: OrtSession
+    private var harSession: OrtSession? = null
     private lateinit var onnxOptions: OrtSession.SessionOptions
-
-    // camera variables
-    private val executor: Executor = Executors.newSingleThreadExecutor()
-    private var videoCapture: VideoCapture<Recorder>? = null
 
     // mediapipe variables
     private var cameraHelper: CameraXPreviewHelper? = null
@@ -97,9 +89,9 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
     private var isCameraFacingFront: Boolean = false
     private var enableHarInference: Boolean = false
     private var timelapseThread: Thread? = null
+    private var harSkeletonThread: Thread? = null
     private var globalPfdResult: PfdResult = PfdResult()
     private var globalLandmark: NormalizedLandmarkList? = null
-    private var globalBitmapStore: MutableList<Bitmap> = mutableListOf()
     private lateinit var timelapseId: String
     private var recordingState: String = "No Activity"
     private var previewSize: Size? = null
@@ -193,12 +185,6 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
         mediaController.setAnchorView(videoView)
         videoView.setMediaController(mediaController)
         timeLapseView.setMediaController(mediaController)
-
-        //create skeleton HAR timer
-        val skeletonTimer =
-            fixedRateTimer(name = "SkeletonTimer", initialDelay = 0L, period = 4000L) {
-                getSkeleton()
-            }
     }
 
     // init media pipe and set variables according to offical docs
@@ -464,7 +450,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                 System.gc()
 
                 // init har model
-                if (!::harSession.isInitialized) {
+                if (harSession == null) {
                     val env = GlobalVars.ortEnv
                     harSession =
                         env.createSession(commonUtils.readModel(ModelType.HAR))
@@ -485,6 +471,11 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                         }
                         Thread.sleep(1000)
                     }
+                }
+
+                // har skeleton thread
+                harSkeletonThread = thread {
+                    getSkeleton()
                 }
 
                 requireActivity().runOnUiThread(java.lang.Runnable {
@@ -511,15 +502,27 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                 enableHarInference = false
 
                 // stop har and vad prediction
-                harSession.close()
+                harSession?.close()
+                harSession = null
                 harHelper.vadInference()
 
                 // stop timelapse thread
                 timelapseThread?.join()
 
+                // stop harSkeleton thread
+                harSkeletonThread?.join()
+
                 // save timelapse
                 val totalFrames: Int = frameCounter.text.toString().toInt() + 1
-                val isSaved: Boolean = pfdHelper.saveVideoFromBitmaps(timelapseFps, timelapseId, totalFrames)
+
+                var isSaved: Boolean = false
+
+                val saveVideoThread = thread {
+                    isSaved =
+                        pfdHelper.saveVideoFromBitmaps(timelapseFps, timelapseId, totalFrames)
+                }
+
+                saveVideoThread.join()
 
                 if (isSaved) {
                     Toast.makeText(
@@ -703,8 +706,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                 cameraFacing,  /*unusedSurfaceTexture=*/
                 null
             )
-        }
-        catch(e: Exception) {
+        } catch (e: Exception) {
             e.message?.let { Log.v(TAG, it) }
         }
     }
@@ -723,6 +725,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                     Toast.makeText(requireContext(), "Painting not detected!", Toast.LENGTH_LONG)
                         .show()
                 } else {
+                    // TODO: fix isHandInFrame, add a timestamp to keypoint data
                     val isHandInFrame = pfdHelper.isHandInFrame(
                         bitmap,
                         pfdResult.bbox.value[0],
@@ -730,8 +733,9 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                     )
 
                     // perform perspective transformation and show image on previewViewSmall
-//                    if (!isHandInFrame && (recordingState == "Painting" || initialCapture)) {
-                    if(!isHandInFrame) {
+                    // TODO:  revert this logic for prod
+                    if (initialCapture || (!isHandInFrame && recordingState == "Painting")) {
+//                    if(!isHandInFrame) {
                         requireActivity().runOnUiThread(java.lang.Runnable {
                             val transformedBitmap = bitmap.let {
                                 pfdHelper.perspectiveTransformation(
@@ -739,7 +743,6 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                                     keyPoints[0]
                                 )
                             }
-
 
                             initialCapture = false
 
@@ -750,7 +753,11 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                             frameCounter.text = plusOne.toString()
 
                             // save bitmap to internal storage to compile into timelapse later
-                            pfdHelper.saveBitmapToInternalStorage(transformedBitmap, timelapseId, plusOne)
+                            pfdHelper.saveBitmapToInternalStorage(
+                                transformedBitmap,
+                                timelapseId,
+                                plusOne
+                            )
 
                             bitmap?.recycle()
                         })
