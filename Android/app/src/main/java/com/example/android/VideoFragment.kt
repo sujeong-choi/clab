@@ -887,35 +887,31 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
 
     private fun setupDraggableKeypoints(){
         with(rectOverlay){
-            setOnTouchListener(object : View.OnTouchListener){
-         
+            setOnTouchListener(object : View.OnTouchListener {
                 override fun onTouch(v : View?, event : MotionEvent?):Boolean{
-                    var index :Int
-                    val newX, newY
-                    when(even?.action){
+                    var index =0
+                    when(event?.action){
                         MotionEvent.ACTION_DOWN -> {
-                            prevX = event.rawX
-                            prevY = event.rawY
-                            for(i in 0 until 5){
-                                if ((prevX-globalPfdResult.keyPoint.value[0][i][1])<10 && (prevY-globalPfdResult.keyPoint.value[0][i][1])<10){
+                            val prevX = event.rawX
+                            val prevY = event.rawY
+                            for(i in 0 until 4){
+                                if ((prevX-globalPfdResult.keypoint.value[0][i][1])<10 && (prevY-globalPfdResult.keypoint.value[0][i][1])<10){
                                     index = i
                                     break
                                 }
                             }
-                            
+
                         }
                         MotionEvent.ACTION_MOVE -> {
-                            newX = event.rawX
-                            newY = event.rawY
-                            v.setX(newX)
-                            v.setY(newY)
-                            globalPfdResult.keyPoint.value[0][index]=[newX,newY]
+                            globalPfdResult.keypoint.value[0][index][0] = event.rawX
+                            globalPfdResult.keypoint.value[0][index][1] = event.rawY
+
                             drawKeypoints(globalPfdResult)
                         }
                     }
                     return true
                 }
-            }
+            })
         }
     }
 
