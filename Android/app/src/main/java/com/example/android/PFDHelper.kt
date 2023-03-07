@@ -4,6 +4,7 @@ import ai.onnxruntime.OnnxTensor
 import ai.onnxruntime.OrtSession
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.util.Log
 import com.google.mediapipe.formats.proto.LandmarkProto
 import org.jcodec.api.android.AndroidSequenceEncoder
@@ -14,6 +15,8 @@ import org.opencv.core.MatOfPoint2f
 import org.opencv.core.Size
 import org.opencv.imgproc.Imgproc
 import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
 import java.nio.FloatBuffer
 import java.text.SimpleDateFormat
 import java.util.*
@@ -72,14 +75,14 @@ class PFDHelper(val context: Context) {
     }
 
 
-    fun pfdInference(bitmap: Bitmap, ortSession: OrtSession): PfdResult {
+    fun pfdInference(bitmap: Bitmap, ortSession: OrtSession?): PfdResult {
         // output object
         val sortedOutput = mutableMapOf<String, Any>()
 
         // resize bitmap for memory optimization, disabled to avoid model accuracy
 //        val resizedBitmap: Bitmap = resizeBitmap(bitmap, targetSize)
 
-        val inputNameIterator = ortSession.inputNames!!.iterator()
+        val inputNameIterator = ortSession?.inputNames!!.iterator()
         val inputName0: String = inputNameIterator.next()
         val inputName1: String = inputNameIterator.next()
         val shape = longArrayOf(3, bitmap.height.toLong(), bitmap.width.toLong())
@@ -218,11 +221,6 @@ class PFDHelper(val context: Context) {
         return resizedOutput
     }
 
-    private fun resizeBitmap(bitmap: Bitmap, targetImgSize: Int): Bitmap {
-        // resize bitmap
-        return Bitmap.createScaledBitmap(bitmap, targetImgSize, targetImgSize, false)
-    }
-
     fun isHandInFrame(
         inputFrame: Bitmap,
         bbox: FloatArray,
@@ -283,14 +281,18 @@ class PFDHelper(val context: Context) {
     }
 
     fun saveVideoFromBitmaps(
-        frames: List<Bitmap>,
-        fps: Int
-    ) {
+        fps: Int,
+        timeLapseId: String,
+        totalFrames: Int
+    ): Boolean {
+
+        val frameList: Array<Bitmap> = retrieveAndDeleteBitmapsFromInternalStorage(timeLapseId, totalFrames)
         val file = File(getVideoFilePath("timelapse"))
         var out: FileChannelWrapper? = null
+        var isCompleted = false
 
-        val tlWidth = if (frames[0].width % 2 == 0) frames[0].width else frames[0].width - 1
-        val tlHeight = if (frames[0].height % 2 == 0) frames[0].height else frames[0].height - 1
+        val tlWidth = if (frameList[0].width % 2 == 0) frameList[0].width else frameList[0].width - 1
+        val tlHeight = if (frameList[0].height % 2 == 0) frameList[0].height else frameList[0].height - 1
 
         val timelapseSaveThread = thread {
             try {
@@ -298,13 +300,13 @@ class PFDHelper(val context: Context) {
                 val enc =
                     AndroidSequenceEncoder.createSequenceEncoder(file, fps)
 
-                for (frame in frames) {
+                for (frame in frameList) {
                     val resizedBitmap = Bitmap.createScaledBitmap(frame, tlWidth, tlHeight, false)
                     enc.encodeImage(resizedBitmap)
                 }
 
                 enc.finish()
-                Log.v("PFD", "Timelapse saved for: ${frames.size} frames")
+                isCompleted = true
             } catch (e: Exception) {
                 e.message?.let { Log.v("PFD", it) }
             } finally {
@@ -312,6 +314,7 @@ class PFDHelper(val context: Context) {
             }
         }
         timelapseSaveThread.join()
+        return isCompleted
     }
 
     private fun getVideoFilePath(postfix: String = ""): String {
@@ -320,6 +323,63 @@ class PFDHelper(val context: Context) {
         val fileName = "$currentDateAndTime$postfix.mp4"
         val fileDir = context.filesDir
         return "$fileDir/$fileName"
+    }
+
+    fun getTimelapseId(): String {
+        val dateFormat = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault())
+        return dateFormat.format(Date())
+    }
+
+    /**
+     * This function saves a bitmap to internal storage with a specific ID and count.
+     * It returns the file path of the saved bitmap.
+     * @param context The context of the application.
+     * @param bitmap The bitmap to save.
+     * @param id The specific ID to use in the file name.
+     * @param count The count to use in the file name.
+     */
+    fun saveBitmapToInternalStorage(bitmap: Bitmap, id: String, count: Int): String {
+        val filename = "${id}_$count.png"
+        val file = File(context.filesDir, filename)
+        val stream = FileOutputStream(file)
+
+        bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
+        stream.flush()
+        stream.close()
+
+        return file.absolutePath
+    }
+
+    /**
+     * This function retrieves all bitmaps from internal storage with a specific ID and
+     * puts them into an array. It then deletes the bitmaps from internal storage.
+     * @param context The context of the application.
+     * @param id The specific ID to use in the file name.
+     * @return An array of Bitmap objects.
+     */
+    private fun retrieveAndDeleteBitmapsFromInternalStorage(id: String, totalFrames: Int): Array<Bitmap> {
+        val bitmapList = mutableListOf<Bitmap>()
+        var count = 1
+
+        while (count <= totalFrames) {
+            val filename = "${id}_$count.png"
+            val file = File(context.filesDir, filename)
+
+            if (!file.exists()) {
+                break
+            }
+
+            val stream = FileInputStream(file)
+            val bitmap = BitmapFactory.decodeStream(stream)
+            stream.close()
+
+            file.delete()
+
+            bitmapList.add(bitmap)
+            count++
+        }
+
+        return bitmapList.toTypedArray()
     }
 
     fun perspectiveTransformation(imageBitmap: Bitmap, keyPoints: MutableList<FloatArray>): Bitmap {

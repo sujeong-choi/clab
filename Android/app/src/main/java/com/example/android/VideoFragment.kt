@@ -76,8 +76,9 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
     private lateinit var commonUtils: CommonUtils
     private lateinit var harHelper: HARHelper
     private lateinit var pfdHelper: PFDHelper
-    private lateinit var pfdSession: OrtSession
+    private var pfdSession: OrtSession? = null
     private lateinit var harSession: OrtSession
+    private lateinit var onnxOptions: OrtSession.SessionOptions
 
     // camera variables
     private val executor: Executor = Executors.newSingleThreadExecutor()
@@ -91,9 +92,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
     private lateinit var processor: FrameProcessor
 
     // class variables
-    private var isLoading: Boolean = false
     private var isRecording: Boolean = false
-    private var isNnapiAdded: Boolean = false
     private var isKeypointSelected: Boolean = false
     private var isCameraFacingFront: Boolean = false
     private var enableHarInference: Boolean = false
@@ -101,6 +100,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
     private var globalPfdResult: PfdResult = PfdResult()
     private var globalLandmark: NormalizedLandmarkList? = null
     private var globalBitmapStore: MutableList<Bitmap> = mutableListOf()
+    private lateinit var timelapseId: String
     private var recordingState: String = "No Activity"
     private var previewSize: Size? = null
     private var timelapseFps: Int = 30
@@ -290,20 +290,9 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
     // setup onnx model using global onnx env
     private fun setupOnnxModel() {
         val env = GlobalVars.ortEnv
-        val option = OrtSession.SessionOptions()
-        option.setIntraOpNumThreads(2)
-        option.setExecutionMode(OrtSession.SessionOptions.ExecutionMode.PARALLEL)
-
-        if (!isNnapiAdded) {
-            option.addNnapi()
-            isNnapiAdded = true
-        }
-        if (!::pfdSession.isInitialized)
-            pfdSession =
-                env.createSession(commonUtils.readModel(ModelType.PFD), option)
-        if (!::harSession.isInitialized)
-            harSession =
-                env.createSession(commonUtils.readModel(ModelType.HAR), option)
+        onnxOptions = OrtSession.SessionOptions()
+        onnxOptions.setIntraOpNumThreads(2)
+        onnxOptions.setExecutionMode(OrtSession.SessionOptions.ExecutionMode.PARALLEL)
     }
 
     // get skeletons for HAR processing
@@ -316,6 +305,8 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
 
             val input = harHelper.convertSkeletonData(curSkeletonBuffer)
             val label: String = harHelper.harInference(input, harSession)
+
+            Log.v(TAG, label)
 
             requireActivity().runOnUiThread(java.lang.Runnable {
                 toggleHarLabel(label)
@@ -444,9 +435,47 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
         // live start and stop on click listeners
         recordButton.setOnClickListener {
             rectOverlay.clear()
-            toggleRecording()
+            isRecording = !isRecording
 
             if (isRecording) {
+                requireActivity().runOnUiThread(java.lang.Runnable {
+                    // show loading spinner
+                    loadingView.visibility = View.VISIBLE
+
+                    // prepare ui for recording
+                    recordingCircle.visibility = View.VISIBLE
+                    frameCounter.visibility = View.VISIBLE
+                    frameCounter.text = "0"
+                    harLabel.visibility = View.VISIBLE
+                    previewViewSmall.visibility = View.VISIBLE
+                    recordButton.text = "STOP"
+
+                    // disable detect button while recording
+                    detectButton.isEnabled = false
+                })
+
+                // close PFD session for memory management
+                pfdSession?.close()
+                pfdSession = null
+
+                // set timelapse id to name file later
+                timelapseId = pfdHelper.getTimelapseId()
+
+                System.gc()
+
+                // init har model
+                if (!::harSession.isInitialized) {
+                    val env = GlobalVars.ortEnv
+                    harSession =
+                        env.createSession(commonUtils.readModel(ModelType.HAR))
+                }
+
+                // start HAR inference once HAR model is initialized
+                enableHarInference = true
+
+                // start vad prediction
+                harHelper.vadInference()
+
                 // recording thread
                 timelapseThread = thread {
                     while (isRecording) {
@@ -457,27 +486,48 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                         Thread.sleep(1000)
                     }
                 }
+
+                requireActivity().runOnUiThread(java.lang.Runnable {
+                    // show loading spinner
+                    loadingView.visibility = View.GONE
+                })
+
             } else {
+                requireActivity().runOnUiThread(java.lang.Runnable {
+                    // show loading spinner
+                    loadingView.visibility = View.VISIBLE
+
+                    recordingCircle.visibility = View.GONE
+                    frameCounter.visibility = View.GONE
+                    harLabel.visibility = View.GONE
+                    previewViewSmall.visibility = View.GONE
+                    recordButton.text = "RECORD"
+
+                    // enable detect button while recording
+                    detectButton.isEnabled = true
+                })
+
+                // stop HAR inference
+                enableHarInference = false
+
+                // stop har and vad prediction
+                harSession.close()
+                harHelper.vadInference()
+
                 // stop timelapse thread
                 timelapseThread?.join()
 
-                // show loading spinner
-                loadingView.visibility = View.VISIBLE
                 // save timelapse
+                val totalFrames: Int = frameCounter.text.toString().toInt() + 1
+                val isSaved: Boolean = pfdHelper.saveVideoFromBitmaps(timelapseFps, timelapseId, totalFrames)
 
-                if (globalBitmapStore.size > timelapseFps) {
-                    pfdHelper.saveVideoFromBitmaps(
-                        globalBitmapStore,
-                        timelapseFps
-                    )
-
+                if (isSaved) {
                     Toast.makeText(
                         requireContext(),
                         "Timelapse saved!",
                         Toast.LENGTH_SHORT
                     )
                         .show()
-                    globalBitmapStore.clear()
                 } else {
                     Toast.makeText(
                         requireContext(),
@@ -487,8 +537,10 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                         .show()
                 }
 
-                // show loading spinner
-                loadingView.visibility = View.VISIBLE
+                requireActivity().runOnUiThread(java.lang.Runnable {
+                    // show loading spinner
+                    loadingView.visibility = View.GONE
+                })
             }
         }
 
@@ -500,6 +552,13 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                         // show loading spinner
                         loadingView.visibility = View.VISIBLE
                     })
+
+                    if (pfdSession == null) {
+                        val env = GlobalVars.ortEnv
+                        var modelFile = commonUtils.readModel(ModelType.PFD)
+                        pfdSession =
+                            env.createSession(modelFile)
+                    }
 
                     val pfdResult: PfdResult? =
                         bitmap?.let { it1 -> pfdHelper.pfdInference(it1, pfdSession) }
@@ -575,45 +634,6 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
 
         // stop timelapse thread
         timelapseThread?.join()
-    }
-
-    private fun toggleRecording() {
-        isRecording = !isRecording
-
-        if (isRecording) {
-            recordingCircle.visibility = View.VISIBLE
-            frameCounter.visibility = View.VISIBLE
-            frameCounter.text = "0"
-            harLabel.visibility = View.VISIBLE
-            previewViewSmall.visibility = View.VISIBLE
-            recordButton.text = "STOP"
-
-            // start HAR inference
-            enableHarInference = true
-
-            // disable detect button while recording
-            detectButton.isEnabled = false
-
-            // start vad prediction
-            harHelper.vadInference()
-
-        } else if (!isRecording) {
-            recordingCircle.visibility = View.GONE
-            frameCounter.visibility = View.GONE
-            harLabel.visibility = View.GONE
-            previewViewSmall.visibility = View.GONE
-            recordButton.text = "RECORD"
-
-            // start HAR inference
-            enableHarInference = false
-
-            // enable detect button while recording
-            detectButton.isEnabled = true
-
-            // stop vad prediction
-            harHelper.vadInference()
-
-        }
     }
 
     private fun checkPermissions(): Boolean {
@@ -710,7 +730,8 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                     )
 
                     // perform perspective transformation and show image on previewViewSmall
-                    if (!isHandInFrame && (recordingState == "Painting" || initialCapture)) {
+//                    if (!isHandInFrame && (recordingState == "Painting" || initialCapture)) {
+                    if(!isHandInFrame) {
                         requireActivity().runOnUiThread(java.lang.Runnable {
                             val transformedBitmap = bitmap.let {
                                 pfdHelper.perspectiveTransformation(
@@ -720,18 +741,18 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                             }
 
 
-                            if (initialCapture) globalBitmapStore.clear()
                             initialCapture = false
 
                             previewViewSmall.setImageBitmap(transformedBitmap)
                             previewViewSmall.invalidate()
-                            globalBitmapStore.add(transformedBitmap)
 
-                            bitmap.recycle()
+                            val plusOne: Int = frameCounter.text.toString().toInt() + 1
+                            frameCounter.text = plusOne.toString()
 
-                            val plusOne: String =
-                                (frameCounter.text.toString().toInt() + 1).toString()
-                            frameCounter.text = plusOne
+                            // save bitmap to internal storage to compile into timelapse later
+                            pfdHelper.saveBitmapToInternalStorage(transformedBitmap, timelapseId, plusOne)
+
+                            bitmap?.recycle()
                         })
                     } else if (isHandInFrame && recordingState == "Painting") {
                         // Do something when hand is detected inside frame during painting

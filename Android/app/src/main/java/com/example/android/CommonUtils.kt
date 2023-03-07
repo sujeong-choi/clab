@@ -1,7 +1,6 @@
 package com.example.android
 
 import android.content.Context
-import android.content.res.AssetManager
 import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
 import android.media.ThumbnailUtils
@@ -13,10 +12,6 @@ import android.view.SurfaceView
 import org.opencv.android.Utils
 import org.opencv.core.CvType
 import org.opencv.core.Mat
-import java.io.FileInputStream
-import java.io.IOException
-import java.nio.MappedByteBuffer
-import java.nio.channels.FileChannel
 import kotlin.math.abs
 
 // all model naming is done here
