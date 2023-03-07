@@ -84,7 +84,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
     private var videoCapture: VideoCapture<Recorder>? = null
 
     // mediapipe variables
-    private lateinit var cameraHelper: CameraXPreviewHelper
+    private var cameraHelper: CameraXPreviewHelper? = null
     private lateinit var applicationInfo: ApplicationInfo
     private lateinit var eglManager: EglManager
     private lateinit var converter: ExternalTextureConverter
@@ -569,6 +569,11 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
         } catch (e: java.lang.Exception) {
             e.printStackTrace()
         }
+
+        // Hide preview display until we re-open the camera again.
+        previewDisplayView.visibility = View.GONE
+
+        // stop timelapse thread
         timelapseThread?.join()
     }
 
@@ -639,8 +644,8 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                     ) {
                         val viewSize = Size(width, height)
                         previewSize = viewSize
-                        val displaySize = cameraHelper.computeDisplaySizeFromViewSize(viewSize)
-                        val isCameraRotated = cameraHelper.isCameraRotated
+                        val displaySize = cameraHelper!!.computeDisplaySizeFromViewSize(viewSize)
+                        val isCameraRotated = cameraHelper!!.isCameraRotated
 
                         converter.setSurfaceTextureAndAttachToGLContext(
                             previewFrameTexture,
@@ -661,22 +666,27 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
     }
 
     private fun startCamera() {
-        cameraHelper = CameraXPreviewHelper()
-        cameraHelper.setOnCameraStartedListener(
-            OnCameraStartedListener { surfaceTexture ->
-                previewFrameTexture = surfaceTexture!!
-                // Make the display view visible to start showing the preview.
-                previewDisplayView.visibility = View.VISIBLE
-            })
+        try {
+            cameraHelper = CameraXPreviewHelper()
+            previewFrameTexture = converter.surfaceTexture
 
-        val cameraFacing = if (isCameraFacingFront) CameraFacing.FRONT else CameraFacing.BACK
-        cameraHelper.startCamera(requireActivity(), cameraFacing,  /*unusedSurfaceTexture=*/null)
+            cameraHelper!!.setOnCameraStartedListener(
+                OnCameraStartedListener { surfaceTexture ->
+                    previewFrameTexture = surfaceTexture!!
+                    // Make the display view visible to start showing the preview.
+                    previewDisplayView.visibility = View.VISIBLE
+                })
 
-        val recorder = Recorder.Builder()
-            .setExecutor(executor)
-            .build()
-
-        videoCapture = VideoCapture.withOutput(recorder)
+            val cameraFacing = if (isCameraFacingFront) CameraFacing.FRONT else CameraFacing.BACK
+            cameraHelper!!.startCamera(
+                requireActivity(),
+                cameraFacing,  /*unusedSurfaceTexture=*/
+                null
+            )
+        }
+        catch(e: Exception) {
+            e.message?.let { Log.v(TAG, it) }
+        }
     }
 
     private fun drawPreview(
