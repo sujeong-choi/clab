@@ -69,4 +69,5 @@ class RectOverlay constructor(context: Context?, attributeSet: AttributeSet?) :
         isDrawn = false
         invalidate()
     }
+
 }
