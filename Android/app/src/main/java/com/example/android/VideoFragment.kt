@@ -735,9 +735,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                     )
 
                     // perform perspective transformation and show image on previewViewSmall
-                    // TODO:  revert this logic for prod
                     if (initialCapture || (!isHandInFrame && recordingState == "Painting")) {
-//                    if(!isHandInFrame) {
                         requireActivity().runOnUiThread(java.lang.Runnable {
                             val transformedBitmap = bitmap.let {
                                 pfdHelper.perspectiveTransformation(
