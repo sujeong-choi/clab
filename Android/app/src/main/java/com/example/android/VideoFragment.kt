@@ -772,7 +772,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
         }
     }
 
-    private fun drawKeypoints(pfdResult: PfdResult) {
+    private fun drawKeypoints(pfdResult: PfdResult,  radius: Int = 15, enableBbox: Boolean = false) {
         previewView.post {
             try {
                 val keyPoints = pfdResult.keypoint.value
@@ -782,7 +782,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                     Toast.makeText(requireContext(), "Painting not detected!", Toast.LENGTH_LONG)
                         .show()
                 } else {
-                    rectOverlay.drawKeypoints(keyPoints[0], bbox[0], enableBbox = false)
+                    rectOverlay.drawKeypoints(keyPoints[0], bbox[0], enableBbox, radius)
                 }
             } catch (e: Exception) {
                 e.message?.let { Log.v("Error", it) }
@@ -801,17 +801,12 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
 
                     when (event?.action) {
                         MotionEvent.ACTION_DOWN -> {
-
-                            // get local x and y coordinates
-                            val touchX = event.x
-                            val touchY = event.y
-
                             val keypoints = globalPfdResult.keypoint.value[0]
 
                             // iterate through keypoints to see if any of them are within the on touch threshold
                             for (i in keypoints.indices) {
                                 // check if (prevX, prevY) and threshold are within the keypoint (x, y)
-                                if (keypoints[i][0] in touchX - threshold..touchX + threshold && keypoints[i][1] in touchY - threshold..touchY + threshold) {
+                                if (keypoints[i][0] in  event.x - threshold.. event.x + threshold && keypoints[i][1] in event.y - threshold..event.y + threshold) {
                                     keypointIndex = i
                                     break
                                 }
@@ -822,7 +817,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                                 globalPfdResult.keypoint.value[0][keypointIndex][0] = event.x
                                 globalPfdResult.keypoint.value[0][keypointIndex][1] = event.y
 
-                                drawKeypoints(globalPfdResult)
+                                drawKeypoints(globalPfdResult, 20)
                             } else {
                                 Log.v(TAG, "Point not found")
                             }
@@ -830,6 +825,9 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                         MotionEvent.ACTION_UP -> {
                             // reset keypoint index when touch event starts
                             keypointIndex = -1
+
+                            // disable isDragEvent on keypoints
+                            drawKeypoints(globalPfdResult)
                         }
                     }
                     return true

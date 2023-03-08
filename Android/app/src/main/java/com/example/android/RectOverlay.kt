@@ -54,7 +54,7 @@ class RectOverlay constructor(context: Context?, attributeSet: AttributeSet?) :
         newKeyPoints: MutableList<FloatArray>,
         newBbox: FloatArray,
         enableBbox: Boolean = false,
-        newRadius: Int = 15
+        newRadius: Int
     ) {
         enableBoundBox = enableBbox
         keyPoints = newKeyPoints
