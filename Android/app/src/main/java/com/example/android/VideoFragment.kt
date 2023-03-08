@@ -34,7 +34,6 @@ import com.google.mediapipe.glutil.EglManager
 import com.google.protobuf.InvalidProtocolBufferException
 import org.jetbrains.kotlinx.multik.ndarray.data.D2Array
 import org.opencv.android.OpenCVLoader
-import kotlin.concurrent.fixedRateTimer
 import kotlin.concurrent.thread
 
 
@@ -175,6 +174,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
 
         // allow dragging for android
         setupDraggablePreview()
+        setupDraggableKeypoints()
 
         // disable record button until painting is detected
         recordButton.isEnabled = false
@@ -283,21 +283,19 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
 
     // get skeletons for HAR processing
     private fun getSkeleton() {
-        if (enableHarInference) {
-            //for fast refreshing
-            val curSkeletonBuffer = ArrayList<D2Array<Float>>()
-            curSkeletonBuffer.addAll(skeletonBuffer)
-            skeletonBuffer.clear()
+        //for fast refreshing
+        val curSkeletonBuffer = ArrayList<D2Array<Float>>()
+        curSkeletonBuffer.addAll(skeletonBuffer)
+        skeletonBuffer.clear()
 
-            val input = harHelper.convertSkeletonData(curSkeletonBuffer)
-            val label: String = harHelper.harInference(input, harSession)
+        val input = harHelper.convertSkeletonData(curSkeletonBuffer)
+        val label: String = harHelper.harInference(input, harSession)
 
-            Log.v(TAG, label)
+        Log.v(TAG, label)
 
-            requireActivity().runOnUiThread(java.lang.Runnable {
-                toggleHarLabel(label)
-            })
-        }
+        requireActivity().runOnUiThread(java.lang.Runnable {
+            toggleHarLabel(label)
+        })
     }
 
     // toggle HAR label
@@ -314,7 +312,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
         }
     }
 
-    // setup draggable prevew for timelapse frames
+    // setup draggable preview for timelapse frames
     private fun setupDraggablePreview() {
         //set bg color for previewViewSmall
         previewViewSmall.setBackgroundColor(
@@ -337,7 +335,6 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                             lastX = event.rawX
                             lastY = event.rawY
 
-                            println("Videoview visibility: ${videoView.visibility}")
                         }
                         MotionEvent.ACTION_MOVE -> {
                             // Calculate the distance of the touch movement
@@ -475,7 +472,10 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
 
                 // har skeleton thread
                 harSkeletonThread = thread {
-                    getSkeleton()
+                    while (enableHarInference) {
+                        getSkeleton()
+                        Thread.sleep(4000)
+                    }
                 }
 
                 requireActivity().runOnUiThread(java.lang.Runnable {
@@ -556,9 +556,11 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                         loadingView.visibility = View.VISIBLE
                     })
 
+                    rectOverlay.clear()
+
                     if (pfdSession == null) {
                         val env = GlobalVars.ortEnv
-                        var modelFile = commonUtils.readModel(ModelType.PFD)
+                        val modelFile = commonUtils.readModel(ModelType.PFD)
                         pfdSession =
                             env.createSession(modelFile)
                     }
@@ -787,6 +789,54 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
             } catch (e: Exception) {
                 e.message?.let { Log.v("Error", it) }
             }
+        }
+    }
+
+    private fun setupDraggableKeypoints() {
+        with(rectOverlay) {
+            // -1 because no point has been selected
+            var keypointIndex = -1
+            val threshold = 15
+
+            setOnTouchListener(object : View.OnTouchListener {
+                override fun onTouch(v: View?, event: MotionEvent?): Boolean {
+
+                    when (event?.action) {
+                        MotionEvent.ACTION_DOWN -> {
+
+                            // get local x and y coordinates
+                            val touchX = event.x
+                            val touchY = event.y
+
+                            val keypoints = globalPfdResult.keypoint.value[0]
+
+                            // iterate through keypoints to see if any of them are within the on touch threshold
+                            for (i in keypoints.indices) {
+                                // check if (prevX, prevY) and threshold are within the keypoint (x, y)
+                                if (keypoints[i][0] in touchX - threshold..touchX + threshold && keypoints[i][1] in touchY - threshold..touchY + threshold) {
+                                    keypointIndex = i
+                                    break
+                                }
+                            }
+                        }
+                        MotionEvent.ACTION_MOVE -> {
+                            if (keypointIndex != -1) {
+                                globalPfdResult.keypoint.value[0][keypointIndex][0] = event.x
+                                globalPfdResult.keypoint.value[0][keypointIndex][1] = event.y
+
+                                drawKeypoints(globalPfdResult)
+                            } else {
+                                Log.v(TAG, "Point not found")
+                            }
+                        }
+                        MotionEvent.ACTION_UP -> {
+                            // reset keypoint index when touch event starts
+                            keypointIndex = -1
+                        }
+                    }
+                    return true
+                }
+            })
         }
     }
 

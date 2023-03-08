@@ -15,14 +15,14 @@ class RectOverlay constructor(context: Context?, attributeSet: AttributeSet?) :
     private lateinit var bbox: FloatArray
     private var isDrawn: Boolean = false
     private var enableBoundBox: Boolean = false
-    private var radius: Int = 10
+    private var radius: Int = 15
     private val rectPaint = Paint().apply {
         color = Color.GREEN
         style = Paint.Style.STROKE
         strokeWidth = 10f
     }
     private val paint = Paint().apply {
-        color = Color.RED
+        color = Color.WHITE
     }
     private val rect = Rect()
 
@@ -54,7 +54,7 @@ class RectOverlay constructor(context: Context?, attributeSet: AttributeSet?) :
         newKeyPoints: MutableList<FloatArray>,
         newBbox: FloatArray,
         enableBbox: Boolean = false,
-        newRadius: Int = 10
+        newRadius: Int = 15
     ) {
         enableBoundBox = enableBbox
         keyPoints = newKeyPoints
