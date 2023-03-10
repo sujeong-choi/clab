@@ -45,7 +45,8 @@ class PFDHelper(val context: Context) {
     private val DIM_BATCH_SIZE = 1
     private val DIM_PIXEL_SIZE = 3
     private val targetSize: Int = 512
-    private val targetMediapipeRes: Size = Size(720.0, 1280.0)
+    private val targetMediapipeRes: Size = Size(1080.0, 1980.0)
+    private val visibilityThreshold = 0.75
 
     fun preProcess(bitmap: Bitmap): FloatBuffer {
         val imgWidth = bitmap.width
@@ -200,14 +201,6 @@ class PFDHelper(val context: Context) {
         isStrict: Boolean = false
     ): Boolean {
         if (landMarks != null) {
-//            var diffAboveThreshold = false
-
-            // check image differences
-//            if (prevInputFrame != null) {
-////                diffAboveThreshold = compareImages(inputFrame, prevInputFrame, 10.0)
-//                Log.v("TAG", "Diff Above Threshold: $diffAboveThreshold")
-//            }
-
             val filteredLandmarks = landMarks.landmarkList.toList().slice(1..22)
 
             val frameWidth = inputFrame.width
@@ -218,14 +211,14 @@ class PFDHelper(val context: Context) {
             val poseLandmarks: MutableList<FloatArray> = mutableListOf()
 
             for (landmark in filteredLandmarks) {
-                if (landmark.visibility < 0.5)
+                if (landmark.visibility < visibilityThreshold)
                     poseLandmarks.add(
                         floatArrayOf(
                             0f,
                             0f
                         )
                     )
-                else if (landmark.visibility >= 0.5)
+                else if (landmark.visibility >= visibilityThreshold)
                     poseLandmarks.add(
                         floatArrayOf(
                             landmark.x * frameWidth,

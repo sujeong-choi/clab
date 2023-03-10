@@ -5,8 +5,10 @@ import ai.onnxruntime.OrtSession
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.SurfaceTexture
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.util.Size
@@ -85,6 +87,8 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
     private var converter: ExternalTextureConverter? = null
     private lateinit var processor: FrameProcessor
     private var frameSize: Size = Size(0, 0)
+    private val targetSize: Int = 512
+    private val targetMediapipeRes: Size = Size(1080, 1980)
 
     // class variables
     private var isRecording: Boolean = false
@@ -97,23 +101,26 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
     private var detectThread: Thread? = null
     private var saveVideoThread: Thread? = null
     private var globalPfdResult: PfdResult = PfdResult()
-    private var globalFrameList: MutableList<GlobalFrameType> = mutableListOf()
-    private var currentWorldLandmark: NormalizedLandmarkList? = null
     private var currentLandmark: NormalizedLandmarkList? = null
-    private var currentSkeleton: NormalizedLandmarkList? = null
     private var currentFrame: Bitmap? = null
-    private var currentSkeletonTimestamp: Long = 0L
     private lateinit var timelapseId: String
     private var recordingState: String = "No Activity"
     private var previewSize: Size? = null
     private var timelapseFps: Int = 30
     private var skeletonBuffer = ArrayList<D2Array<Float>>()
     private var initialCapture: Boolean = true
-    private val REQUIRED_PERMISSIONS: Array<String> =
+    private val REQUIRED_PERMISSIONS_32: Array<String> =
         arrayOf(
             "android.permission.CAMERA",
             "android.permission.READ_EXTERNAL_STORAGE",
             "android.permission.WRITE_EXTERNAL_STORAGE",
+            "android.permission.RECORD_AUDIO"
+        )
+    private val REQUIRED_PERMISSIONS_33: Array<String> =
+        arrayOf(
+            "android.permission.CAMERA",
+            "android.permission.READ_MEDIA_VIDEO",
+            "android.permission.READ_MEDIA_IMAGES",
             "android.permission.RECORD_AUDIO"
         )
     private val REQUEST_CODE_PERMISSION = 101
@@ -200,11 +207,20 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
 
         // check camera permission and start camera
         if (!checkPermissions()) {
-            ActivityCompat.requestPermissions(
-                requireActivity(),
-                REQUIRED_PERMISSIONS,
-                REQUEST_CODE_PERMISSION
-            )
+            if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.S_V2) {
+                ActivityCompat.requestPermissions(
+                    requireActivity(),
+                    REQUIRED_PERMISSIONS_32,
+                    REQUEST_CODE_PERMISSION
+                )
+            }
+            else {
+                ActivityCompat.requestPermissions(
+                    requireActivity(),
+                    REQUIRED_PERMISSIONS_33,
+                    REQUEST_CODE_PERMISSION
+                )
+            }
         } else {
             startCamera()
         }
@@ -245,7 +261,8 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
     }
 
     private fun checkPermissions(): Boolean {
-        for (permission in REQUIRED_PERMISSIONS) {
+        val permissionList = if(Build.VERSION.SDK_INT <= Build.VERSION_CODES.S_V2) REQUIRED_PERMISSIONS_32 else REQUIRED_PERMISSIONS_33
+        for (permission in permissionList) {
             if (ActivityCompat.checkSelfPermission(requireContext(), permission)
                 != PackageManager.PERMISSION_GRANTED
             ) {
@@ -307,19 +324,29 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                     val landmarksRaw: ByteArray = PacketGetter.getProtoBytes(packetList[1])
                     currentLandmark =
                         NormalizedLandmarkList.parseFrom(landmarksRaw)
+                }
+                val width = PacketGetter.getImageWidth(packetList[2])
+                val height = PacketGetter.getImageHeight(packetList[2])
+                val buffer: ByteBuffer = ByteBuffer.allocateDirect(width * height * 4)
+                val isConverted: Boolean = PacketGetter.getImageData(packetList[2], buffer)
 
-                    val width = PacketGetter.getImageWidth(packetList[2])
-                    val height = PacketGetter.getImageHeight(packetList[2])
-                    val buffer: ByteBuffer = ByteBuffer.allocateDirect(width * height * 4)
-                    val isConverted: Boolean = PacketGetter.getImageData(packetList[2], buffer)
-
-                    if (isConverted) {
-                        val bitmap: Bitmap =
-                            Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-                        bitmap.copyPixelsFromBuffer(buffer)
-
-                        currentFrame = bitmap
+                if (isConverted) {
+                    if(!initialCapture) {
+                        currentFrame?.recycle()
+                        currentFrame = null
                     }
+
+                    currentFrame =
+                        Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                    currentFrame!!.copyPixelsFromBuffer(buffer)
+
+//                    val options = BitmapFactory.Options()
+//                    options.inMutable = true
+//                    options.inBitmap = currentFrame
+//
+//                    currentFrame = bitmap
+
+                    Log.v(TAG, "Addr: ${System.identityHashCode(currentFrame)}")
                 }
             }
 
@@ -404,7 +431,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
         if (!checkPermissions()) {
             ActivityCompat.requestPermissions(
                 requireActivity(),
-                REQUIRED_PERMISSIONS,
+                REQUIRED_PERMISSIONS_32,
                 REQUEST_CODE_PERMISSION
             )
         } else {
@@ -602,7 +629,9 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                     timelapseThread = thread {
                         while (isRecording) {
                             // update preview screen if hand isn't in frame
-                            drawPreview(globalPfdResult, currentLandmark, currentFrame)
+                            val localLandmark = currentLandmark
+                            val localBitmap = currentFrame
+                            drawPreview(globalPfdResult, localLandmark, localBitmap)
 
                             Thread.sleep(1000)
                         }
@@ -705,8 +734,8 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                     }
 
                     val pfdResult: PfdResult? =
-                        globalFrameList.last()
-                            .let { it1 -> pfdHelper.pfdInference(it1.bitmap!!, pfdSession) }
+                        currentFrame
+                            .let { it1 -> pfdHelper.pfdInference(it1!!, pfdSession) }
 
                     requireActivity().runOnUiThread(java.lang.Runnable {
                         // hide loading spinner
@@ -865,7 +894,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                                 plusOne
                             )
 
-                            bitmap?.recycle()
+                            bitmap.recycle()
                         })
                     } else if (isHandInFrame && recordingState == "Painting") {
                         // Do something when hand is detected inside frame during painting
@@ -878,7 +907,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
         }
     }
 
-    private fun drawKeypoints(pfdResult: PfdResult, radius: Int = 15, enableBbox: Boolean = false) {
+    private fun drawKeypoints(pfdResult: PfdResult, radius: Int = 25, enableBbox: Boolean = false) {
         previewView.post {
             try {
                 val keyPoints = pfdResult.keypoint.value
@@ -908,7 +937,8 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                     when (event?.action) {
                         MotionEvent.ACTION_DOWN -> {
                             if (globalPfdResult.keypoint.value.isNotEmpty() && !enableHarInference) {
-                                val keypoints = globalPfdResult.keypoint.value[0]
+                                val resizedKeypoints = resizeKeypoints(globalPfdResult.bbox.value[0], globalPfdResult.keypoint.value[0])
+                                val keypoints = resizedKeypoints.keypoint.value[0]
 
                                 // iterate through keypoints to see if any of them are within the on touch threshold
                                 for (i in keypoints.indices) {
@@ -922,10 +952,15 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                         }
                         MotionEvent.ACTION_MOVE -> {
                             if (keypointIndex != -1) {
-                                globalPfdResult.keypoint.value[0][keypointIndex][0] = event.x
-                                globalPfdResult.keypoint.value[0][keypointIndex][1] = event.y
+                                val widthRatio = targetSize.toFloat() / targetMediapipeRes.width
+                                val heightRatio = targetSize.toFloat() / targetMediapipeRes.height
 
-                                drawKeypoints(globalPfdResult, 20)
+                                Log.v(TAG, "Move Coordinates: ${event.x * widthRatio}, ${event.y * heightRatio}")
+
+                                globalPfdResult.keypoint.value[0][keypointIndex][0] = event.x * widthRatio
+                                globalPfdResult.keypoint.value[0][keypointIndex][1] = event.y * heightRatio
+
+                                drawKeypoints(globalPfdResult, 30)
                             }
                         }
                         MotionEvent.ACTION_UP -> {
@@ -944,4 +979,5 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
             })
         }
     }
+
 }

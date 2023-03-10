@@ -21,7 +21,7 @@ class RectOverlay constructor(context: Context?, attributeSet: AttributeSet?) :
     private lateinit var bbox: FloatArray
     private var isDrawn: Boolean = false
     private var enableBoundingBox: Boolean = false
-    private var radius: Int = 15
+    private var radius: Int = 25
     private val rectPaint = Paint().apply {
         color = Color.GREEN
         style = Paint.Style.STROKE
