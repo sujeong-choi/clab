@@ -1,8 +1,12 @@
 package com.example.android
 
 import android.content.Context
-import android.graphics.*
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Rect
 import android.util.AttributeSet
+import android.util.Size
 import android.view.View
 
 /**
@@ -11,10 +15,12 @@ import android.view.View
 class RectOverlay constructor(context: Context?, attributeSet: AttributeSet?) :
     View(context, attributeSet) {
 
+    private lateinit var frameSize: Size
+    private val targetSize: Int = 512
     private lateinit var keyPoints: MutableList<FloatArray>
     private lateinit var bbox: FloatArray
     private var isDrawn: Boolean = false
-    private var enableBoundBox: Boolean = false
+    private var enableBoundingBox: Boolean = false
     private var radius: Int = 15
     private val rectPaint = Paint().apply {
         color = Color.GREEN
@@ -30,19 +36,25 @@ class RectOverlay constructor(context: Context?, attributeSet: AttributeSet?) :
         super.onDraw(canvas)
         if (isDrawn) {
 
-            for (keypoint in keyPoints) {
+            // resize keypoints to screensize
+            val resizedKeypoints = resizeKeypoints(bbox, keyPoints)
+
+            val localBbox = resizedKeypoints.bbox.value[0]
+            val localKeypoint = resizedKeypoints.keypoint.value[0]
+
+            for (keypoint in localKeypoint) {
                 val kx = keypoint[0].toInt()
                 val ky = keypoint[1].toInt()
                 canvas?.drawCircle(kx.toFloat(), ky.toFloat(), radius.toFloat(), paint)
             }
 
             // for drawing a bounding box
-            if (enableBoundBox) {
+            if (enableBoundingBox) {
                 canvas?.drawRect(
-                    bbox[0],
-                    bbox[1],
-                    bbox[2],
-                    bbox[3],
+                    localBbox[0],
+                    localBbox[1],
+                    localBbox[2],
+                    localBbox[3],
                     rectPaint
                 )
             }
@@ -56,12 +68,51 @@ class RectOverlay constructor(context: Context?, attributeSet: AttributeSet?) :
         enableBbox: Boolean = false,
         newRadius: Int
     ) {
-        enableBoundBox = enableBbox
+        enableBoundingBox = enableBbox
         keyPoints = newKeyPoints
         bbox = newBbox
         radius = newRadius
         isDrawn = true
         invalidate()
+    }
+
+    fun setScreenSize(size: Size) {
+        frameSize = size
+    }
+
+    fun resizeKeypoints(
+        bbox: FloatArray,
+        keypoints: MutableList<FloatArray>
+    ): PfdResult {
+        val resizedOutput = PfdResult()
+
+        // custom image size
+        val widthRatio = frameSize.width / targetSize.toFloat()
+        val heightRatio = frameSize.height / targetSize.toFloat()
+
+        // resize bbox and keypoint
+        resizedOutput.bbox.value.add(
+            floatArrayOf(
+                bbox[0] * widthRatio,
+                bbox[1] * heightRatio,
+                bbox[2] * widthRatio,
+                bbox[3] * heightRatio
+            )
+        )
+
+        val tempKp: MutableList<FloatArray> = mutableListOf()
+
+        for (kp in keypoints) {
+            tempKp.add(
+                floatArrayOf(
+                    kp[0] * widthRatio,
+                    kp[1] * heightRatio
+                )
+            )
+        }
+        resizedOutput.keypoint.value.add(tempKp)
+
+        return resizedOutput
     }
 
     fun clear() {

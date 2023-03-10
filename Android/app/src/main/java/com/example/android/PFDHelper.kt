@@ -1,6 +1,7 @@
 package com.example.android
 
 import ai.onnxruntime.OnnxTensor
+import ai.onnxruntime.OrtException
 import ai.onnxruntime.OrtSession
 import android.content.Context
 import android.graphics.Bitmap
@@ -10,9 +11,8 @@ import com.google.mediapipe.formats.proto.LandmarkProto
 import org.jcodec.api.android.AndroidSequenceEncoder
 import org.jcodec.common.io.FileChannelWrapper
 import org.jcodec.common.io.NIOUtils
-import org.opencv.core.Mat
-import org.opencv.core.MatOfPoint2f
-import org.opencv.core.Size
+import org.opencv.android.Utils
+import org.opencv.core.*
 import org.opencv.imgproc.Imgproc
 import java.io.File
 import java.io.FileInputStream
@@ -45,6 +45,7 @@ class PFDHelper(val context: Context) {
     private val DIM_BATCH_SIZE = 1
     private val DIM_PIXEL_SIZE = 3
     private val targetSize: Int = 512
+    private val targetMediapipeRes: Size = Size(720.0, 1280.0)
 
     fun preProcess(bitmap: Bitmap): FloatBuffer {
         val imgWidth = bitmap.width
@@ -80,17 +81,16 @@ class PFDHelper(val context: Context) {
         val sortedOutput = mutableMapOf<String, Any>()
 
         // resize bitmap for memory optimization, disabled to avoid model accuracy
-//        val resizedBitmap: Bitmap = resizeBitmap(bitmap, targetSize)
+        val resizedBitmap: Bitmap = commonUtils.resizeBitmap(bitmap, targetSize)
 
         val inputNameIterator = pfdSession?.inputNames!!.iterator()
         val inputName0: String = inputNameIterator.next()
         val inputName1: String = inputNameIterator.next()
-        val shape = longArrayOf(3, bitmap.height.toLong(), bitmap.width.toLong())
-
+        val shape = longArrayOf(3, resizedBitmap.height.toLong(), resizedBitmap.width.toLong())
 
         val env = GlobalVars.ortEnv
         env.use {
-            val tensor0 = OnnxTensor.createTensor(env, preProcess(bitmap), shape)
+            val tensor0 = OnnxTensor.createTensor(env, preProcess(resizedBitmap), shape)
 
             // send an empty bitmap to avoid extra computation
             val bufferSize = shape.reduce(Long::times).toInt()
@@ -102,11 +102,9 @@ class PFDHelper(val context: Context) {
             inputMap[inputName1] = tensor1
 
             try {
-
                 val output = pfdSession.run(inputMap)
 
                 val outputNames = pfdSession.outputNames.toList()
-
                 /*
                 * Output format from the model is as follows
                 * boxes_1: float coordinates containing coordinates of bounding boxes in the format [[top_left_x, top_left_y, bottom_right_x, bottom_right_y]]
@@ -122,13 +120,13 @@ class PFDHelper(val context: Context) {
                     // break on the 5th item since the second image is a dummy image
                     if (idx == 4) break
                 }
-            }
-            catch (e: Exception) {
+
+            } catch (e: OrtException) {
                 e.message?.let { it1 -> Log.v("PFD", it1) }
             }
 
             return if (sortedOutput.isNotEmpty())
-                preprocessOutput(sortedOutput, bitmap.width, bitmap.height)
+                preprocessOutput(sortedOutput)
             else {
                 return PfdResult()
             }
@@ -136,9 +134,7 @@ class PFDHelper(val context: Context) {
     }
 
     private fun preprocessOutput(
-        modelOutput: MutableMap<String, Any>,
-        origWidth: Int,
-        origHeight: Int
+        modelOutput: MutableMap<String, Any>
     ): PfdResult {
         // check if scores for both bbox and keypoints
         // filter them by score > 0.8
@@ -168,55 +164,31 @@ class PFDHelper(val context: Context) {
         processedOutput.size = size
 
         // to be used when input image is resized, output keypoints also need to be resized
-        // return resizeOutput(processedOutput, origWidth, origHeight)
-
         return processedOutput
     }
 
     // resize keypoint outputs
-    private fun resizeOutput(
-        pfdResult: PfdResult,
-        origWidth: Int,
-        origHeight: Int
-    ): PfdResult {
-        val resizedOutput = PfdResult()
+    private fun resizeKeypointsToMediapipe(
+        keypoints: MutableList<FloatArray>
+    ): MutableList<FloatArray> {
+        val resizedOutput: MutableList<FloatArray> = mutableListOf()
 
-        // calculate width and height ratio
-        val widthRatio = origWidth.toFloat() / targetSize.toFloat()
-        val heightRatio = origHeight.toFloat() / targetSize.toFloat()
-
-        val bboxes = pfdResult.bbox.value
-        val keypointsList = pfdResult.keypoint.value
+        // custom image size
+        val widthRatio = targetMediapipeRes.width / targetSize.toFloat()
+        val heightRatio = targetMediapipeRes.height / targetSize.toFloat()
 
 
-        // resize bbox and keypoint
-        for (i in bboxes.indices) {
-            val bbox = bboxes[i]
-            val keypoints = keypointsList[i]
+        // resize keypoints
 
-            resizedOutput.bbox.value.add(
+        for (kp in keypoints) {
+            resizedOutput.add(
                 floatArrayOf(
-                    bbox[0] * widthRatio,
-                    bbox[1] * heightRatio,
-                    bbox[2] * widthRatio,
-                    bbox[3] * heightRatio
+                    (kp[0] * widthRatio).toFloat(),
+                    (kp[1] * heightRatio).toFloat()
+
                 )
             )
-
-            val tempKp: MutableList<FloatArray> = mutableListOf()
-
-            for (kp in keypoints) {
-                tempKp.add(
-                    floatArrayOf(
-                        kp[0] * widthRatio,
-                        kp[1] * heightRatio
-                    )
-                )
-            }
-            resizedOutput.keypoint.value.add(tempKp)
         }
-
-        resizedOutput.size = pfdResult.size
 
         return resizedOutput
     }
@@ -224,10 +196,19 @@ class PFDHelper(val context: Context) {
     fun isHandInFrame(
         inputFrame: Bitmap,
         bbox: FloatArray,
-        landMarks: LandmarkProto.NormalizedLandmarkList?
+        landMarks: LandmarkProto.NormalizedLandmarkList?,
+        isStrict: Boolean = false
     ): Boolean {
         if (landMarks != null) {
-            val filteredLandmarks = landMarks.landmarkList.toList().slice(13..22)
+//            var diffAboveThreshold = false
+
+            // check image differences
+//            if (prevInputFrame != null) {
+////                diffAboveThreshold = compareImages(inputFrame, prevInputFrame, 10.0)
+//                Log.v("TAG", "Diff Above Threshold: $diffAboveThreshold")
+//            }
+
+            val filteredLandmarks = landMarks.landmarkList.toList().slice(1..22)
 
             val frameWidth = inputFrame.width
             val frameHeight = inputFrame.height
@@ -261,14 +242,17 @@ class PFDHelper(val context: Context) {
             }
             return false
         }
-        return false
+        // if isStrict is set to true, it enforces human skeleton presence in picture to test if hand is in frame or not
+        return isStrict
     }
 
     private fun isPointInsideRectangle(
         point: FloatArray,
         bbox: FloatArray,
-        bufferZone: Int = 10
+        bufferZone: Int = 5
     ): Boolean {
+        // resize points to 720*1980
+
         val topLeftX = bbox[0] - bufferZone
         val topLeftY = bbox[1] - bufferZone
         val bottomRightX = bbox[2] + bufferZone
@@ -280,15 +264,43 @@ class PFDHelper(val context: Context) {
         return pointX in topLeftX..bottomRightX && pointY in topLeftY..bottomRightY
     }
 
+    fun compareImages(inputFrame: Bitmap, prevInputFrame: Bitmap, threshold: Double): Boolean {
+        val img1 = Mat()
+        val img2 = Mat()
+
+        Utils.bitmapToMat(inputFrame, img1)
+        Utils.bitmapToMat(prevInputFrame, img2)
+
+        // Convert images to grayscale
+        val gray1 = Mat()
+        val gray2 = Mat()
+        Imgproc.cvtColor(img1, gray1, Imgproc.COLOR_BGR2GRAY);
+        Imgproc.cvtColor(img2, gray2, Imgproc.COLOR_BGR2GRAY);
+
+        // Calculate mean square error between the images
+        val diff = Mat()
+        Core.absdiff(gray1, gray2, diff)
+        val squaredDiff = Mat()
+        Core.multiply(diff, diff, squaredDiff)
+        val mse = MatOfDouble()
+        Core.mean(squaredDiff, mse)
+
+        // Compare mean square error to threshold
+        val mseValue = mse.toArray()[0]
+        return mseValue > threshold
+    }
+
+
     fun saveVideoFromBitmaps(
         fps: Int,
         timeLapseId: String,
         totalFrames: Int
     ): Boolean {
 
-        val frameList: Array<Bitmap> = retrieveAndDeleteBitmapsFromInternalStorage(timeLapseId, totalFrames)
+        val frameList: Array<Bitmap> =
+            retrieveAndDeleteBitmapsFromInternalStorage(timeLapseId, totalFrames)
 
-        if(frameList.size > 30) {
+        if (frameList.size > 30) {
             val file = File(getVideoFilePath("timelapse"))
             var out: FileChannelWrapper? = null
             var isCompleted = false
@@ -365,11 +377,13 @@ class PFDHelper(val context: Context) {
     /**
      * This function retrieves all bitmaps from internal storage with a specific ID and
      * puts them into an array. It then deletes the bitmaps from internal storage.
-     * @param context The context of the application.
      * @param id The specific ID to use in the file name.
      * @return An array of Bitmap objects.
      */
-    private fun retrieveAndDeleteBitmapsFromInternalStorage(id: String, totalFrames: Int): Array<Bitmap> {
+    private fun retrieveAndDeleteBitmapsFromInternalStorage(
+        id: String,
+        totalFrames: Int
+    ): Array<Bitmap> {
         val bitmapList = mutableListOf<Bitmap>()
         var count = 1
 
@@ -395,12 +409,15 @@ class PFDHelper(val context: Context) {
     }
 
     fun perspectiveTransformation(imageBitmap: Bitmap, keyPoints: MutableList<FloatArray>): Bitmap {
+        // resize keypoints to match mediapipe processing size
+        val resizedKeypoints = resizeKeypointsToMediapipe(keyPoints)
+
         val imgMat = commonUtils.bitmapToMat(imageBitmap)
 
-        val topLeft = keyPoints[0]
-        val topRight = keyPoints[3]
-        val bottomLeft = keyPoints[1]
-        val bottomRight = keyPoints[2]
+        val topLeft = resizedKeypoints[0]
+        val topRight = resizedKeypoints[3]
+        val bottomLeft = resizedKeypoints[1]
+        val bottomRight = resizedKeypoints[2]
 
         val imgWidth = abs(topLeft[0] - topRight[0])
         val imgHeight = abs(topLeft[1] - bottomLeft[1])

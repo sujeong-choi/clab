@@ -6,7 +6,6 @@ import android.media.MediaMetadataRetriever
 import android.media.ThumbnailUtils
 import android.os.Handler
 import android.os.HandlerThread
-import android.util.Size
 import android.view.PixelCopy
 import android.view.SurfaceView
 import org.opencv.android.Utils
@@ -44,7 +43,7 @@ class CommonUtils(val context: Context) {
         return bitmap
     }
 
-    fun getFrameBitmap(view: SurfaceView, callback: (Bitmap?) -> Unit) {
+    fun getFrameBitmap(view: SurfaceView, callback: (Bitmap?, Long) -> Unit) {
         val bitmap: Bitmap = Bitmap.createBitmap(
             view.width,
             view.height,
@@ -55,26 +54,27 @@ class CommonUtils(val context: Context) {
             // Create a handler thread to offload the processing of the image.
             val handlerThread = HandlerThread("PixelCopier")
             handlerThread.start()
+            val bitmapTimestamp = System.currentTimeMillis()
             PixelCopy.request(
                 view, bitmap,
                 PixelCopy.OnPixelCopyFinishedListener { copyResult ->
                     if (copyResult == PixelCopy.SUCCESS) {
-                        callback(bitmap)
+                        callback(bitmap, bitmapTimestamp)
                     }
-                    handlerThread.quitSafely();
+                    handlerThread.quitSafely()
                 },
                 Handler(handlerThread.looper)
             )
         } catch (e: IllegalArgumentException) {
-            callback(null)
+            callback(null, System.currentTimeMillis())
             // PixelCopy may throw IllegalArgumentException, make sure to handle it
             e.printStackTrace()
         }
     }
 
-    fun resizeBitmap(bitmap: Bitmap, targetImgSize: Size): Bitmap {
+    fun resizeBitmap(bitmap: Bitmap, targetImgSize: Int): Bitmap {
         // resize bitmap
-        return Bitmap.createScaledBitmap(bitmap, targetImgSize.width, targetImgSize.height, false)
+        return Bitmap.createScaledBitmap(bitmap, targetImgSize, targetImgSize, false)
     }
 
     data class BboxCenter(
