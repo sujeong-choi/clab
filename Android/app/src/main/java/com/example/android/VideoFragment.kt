@@ -29,13 +29,10 @@ import com.google.mediapipe.framework.AndroidAssetUtil
 import com.google.mediapipe.framework.Packet
 import com.google.mediapipe.framework.PacketGetter
 import com.google.mediapipe.glutil.EglManager
-import com.google.protobuf.InvalidProtocolBufferException
 import org.jetbrains.kotlinx.multik.ndarray.data.D2Array
 import org.opencv.android.OpenCVLoader
 import java.nio.ByteBuffer
 import kotlin.concurrent.thread
-import kotlin.math.abs
-
 
 class GlobalVars {
     companion object {
@@ -45,8 +42,8 @@ class GlobalVars {
     }
 }
 
-interface GlobalLandmarkType {
-    var landmark: NormalizedLandmarkList?
+interface GlobalFrameType {
+    var bitmap: Bitmap?
     var timestamp: Long
 }
 
@@ -81,6 +78,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
     private lateinit var onnxOptions: OrtSession.SessionOptions
 
     // mediapipe variables
+    private var currentPackets: MutableList<Packet> = mutableListOf()
     private var cameraHelper: CameraXPreviewHelper? = null
     private lateinit var applicationInfo: ApplicationInfo
     private lateinit var eglManager: EglManager
@@ -99,9 +97,12 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
     private var detectThread: Thread? = null
     private var saveVideoThread: Thread? = null
     private var globalPfdResult: PfdResult = PfdResult()
-    private var globalLandmark: MutableList<GlobalLandmarkType> = mutableListOf()
+    private var globalFrameList: MutableList<GlobalFrameType> = mutableListOf()
+    private var currentWorldLandmark: NormalizedLandmarkList? = null
+    private var currentLandmark: NormalizedLandmarkList? = null
+    private var currentSkeleton: NormalizedLandmarkList? = null
     private var currentFrame: Bitmap? = null
-    private var currentFrameTimestamp: Long = 0L
+    private var currentSkeletonTimestamp: Long = 0L
     private lateinit var timelapseId: String
     private var recordingState: String = "No Activity"
     private var previewSize: Size? = null
@@ -287,59 +288,105 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
             processor
                 .videoSurfaceOutput
                 .setFlipY(true)
+            processor.graph.addMultiStreamCallback(
+                listOf(
+                    applicationInfo.metaData.getString("outputLandmarksStreamNameWorld"),
+                    applicationInfo.metaData.getString("outputLandmarksStreamName"),
+                    applicationInfo.metaData.getString("outputImageStreamName")
+                )
+            ) { packetList: MutableList<Packet> ->
 
-            processor.addPacketCallback(
-                applicationInfo.metaData.getString("outputLandmarksStreamNameWorld")
-            ) { packet: Packet ->
-                if (enableHarInference)
-                    skeletonBuffer.add(
-                        harHelper.saveSkeletonData(
-                            LandmarkProto.LandmarkList.parseFrom(
-                                PacketGetter.getProtoBytes(packet)
-                            )
-                        )
-                    )
-            }
+                if (!packetList[0].isEmpty) {
+                    val landmarksRaw: ByteArray = PacketGetter.getProtoBytes(packetList[0])
+                    val poseWorldLandmarks: LandmarkProto.LandmarkList =
+                        LandmarkProto.LandmarkList.parseFrom(landmarksRaw)
+                    if (enableHarInference)
+                        harHelper.saveSkeletonData(poseWorldLandmarks)
+                }
+                if (!packetList[1].isEmpty) {
+                    val landmarksRaw: ByteArray = PacketGetter.getProtoBytes(packetList[1])
+                    currentLandmark =
+                        NormalizedLandmarkList.parseFrom(landmarksRaw)
 
-            processor.addPacketCallback(
-                applicationInfo.metaData.getString("outputLandmarksStreamName")
-            ) { packet: Packet ->
-                val landmarksRaw = PacketGetter.getProtoBytes(packet)
-                try {
-                    if (NormalizedLandmarkList.parseFrom(landmarksRaw) != null) {
-                        if (globalLandmark.size >= 120)
-                            globalLandmark.clear()
+                    val width = PacketGetter.getImageWidth(packetList[2])
+                    val height = PacketGetter.getImageHeight(packetList[2])
+                    val buffer: ByteBuffer = ByteBuffer.allocateDirect(width * height * 4)
+                    val isConverted: Boolean = PacketGetter.getImageData(packetList[2], buffer)
 
-                        globalLandmark.add(object : GlobalLandmarkType {
-                            override var landmark: NormalizedLandmarkList? =
-                                NormalizedLandmarkList.parseFrom(landmarksRaw)
-                            override var timestamp: Long = packet.timestamp
-                        })
+                    if (isConverted) {
+                        val bitmap: Bitmap =
+                            Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                        bitmap.copyPixelsFromBuffer(buffer)
+
+                        currentFrame = bitmap
                     }
-                } catch (e: InvalidProtocolBufferException) {
-                    Log.e(TAG, "Couldn't Exception received - $e")
-                    return@addPacketCallback
                 }
             }
 
-            processor.addPacketCallback(
-                applicationInfo.metaData.getString("outputImageStreamName")
-            ) { packet ->
-                val width = PacketGetter.getImageWidth(packet)
-                val height = PacketGetter.getImageHeight(packet)
-                val buffer: ByteBuffer = ByteBuffer.allocateDirect(width * height * 4)
-                val isConverted: Boolean = PacketGetter.getImageData(packet, buffer)
-
-                if (isConverted) {
-                    val bitmap: Bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-                    bitmap.copyPixelsFromBuffer(buffer)
-
-                    // do something with bitmap
-//                    if(!initialCapture) currentFrame?.recycle()
-                    currentFrame = bitmap
-                    currentFrameTimestamp = packet.timestamp
-                }
-            }
+//            processor.addPacketCallback(
+//                applicationInfo.metaData.getString("outputLandmarksStreamNameWorld")
+//            ) { packet: Packet ->
+//                if (enableHarInference)
+//                    skeletonBuffer.add(
+//                        harHelper.saveSkeletonData(
+//                            LandmarkProto.LandmarkList.parseFrom(
+//                                PacketGetter.getProtoBytes(packet)
+//                            )
+//                        )
+//                    )
+//            }
+//
+//            processor.addPacketCallback(
+//                applicationInfo.metaData.getString("outputLandmarksStreamName")
+//            ) { packet: Packet ->
+//                val landmarksRaw = PacketGetter.getProtoBytes(packet)
+//                try {
+//                    if (NormalizedLandmarkList.parseFrom(landmarksRaw) != null) {
+////                        if (globalLandmark.size >= 120)
+////                            globalLandmark.clear()
+////
+////                        globalLandmark.add(object : GlobalLandmarkType {
+////                            override var landmark: NormalizedLandmarkList? =
+////                                NormalizedLandmarkList.parseFrom(landmarksRaw)
+////                            override var timestamp: Long = packet.timestamp
+////                        })
+//
+//                        currentSkeleton = NormalizedLandmarkList.parseFrom(landmarksRaw)
+//                        currentSkeletonTimestamp = packet.timestamp
+//                    }
+//                } catch (e: InvalidProtocolBufferException) {
+//                    Log.e(TAG, "Couldn't Exception received - $e")
+//                    return@addPacketCallback
+//                }
+//            }
+//
+//            processor.addPacketCallback(
+//                applicationInfo.metaData.getString("outputImageStreamName")
+//            ) { packet ->
+//                val width = PacketGetter.getImageWidth(packet)
+//                val height = PacketGetter.getImageHeight(packet)
+//                val buffer: ByteBuffer = ByteBuffer.allocateDirect(width * height * 4)
+//                val isConverted: Boolean = PacketGetter.getImageData(packet, buffer)
+//
+//                if (isConverted) {
+//                    val bitmap: Bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+//                    bitmap.copyPixelsFromBuffer(buffer)
+//
+//                    // do something with bitmap
+////                    if(!initialCapture) currentFrame?.recycle()
+//                    // store bitmaps into a temp array so we can find the correct frame for skeleton
+//                    if (globalFrameList.size >= 50) {
+////                        val lastIdx = globalFrameList.size - 1
+////                        globalFrameList[lastIdx].bitmap?.recycle()
+//                        globalFrameList.clear()
+//                    }
+//
+//                    globalFrameList.add(object : GlobalFrameType {
+//                        override var bitmap: Bitmap? = bitmap
+//                        override var timestamp: Long = packet.timestamp
+//                    })
+//                }
+//            }
 
             setupOnnxModel()
         } catch (e: Exception) {
@@ -554,29 +601,8 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                     // thread that captures timelapses
                     timelapseThread = thread {
                         while (isRecording) {
-                            val landmarkList = globalLandmark.toList()
-                            var localLandmark: LandmarkProto.NormalizedLandmarkList? = null
-                            var minDiff = 50L
-                            val localFrame = currentFrame
-                            val localFrameTimestamp = currentFrameTimestamp
-
-                            // find the landmark closest in time to the current bitmap
-                            // iterate through each landmarklist
-                            for (i in landmarkList.indices) {
-                                val l = landmarkList[i]
-                                val diff = abs(localFrameTimestamp - l.timestamp)
-
-                                if (diff < minDiff) {
-                                    minDiff = diff
-                                    localLandmark = l.landmark!!
-                                }
-                            }
-
-                            Log.v(TAG, "Last skeleton timestamp: ${(landmarkList.last().timestamp / 1000000).toInt()}")
-                            Log.v(TAG, "Frame timestamp: ${(localFrameTimestamp / 1000000).toInt()}")
-
                             // update preview screen if hand isn't in frame
-                            drawPreview(globalPfdResult, localLandmark, localFrame)
+                            drawPreview(globalPfdResult, currentLandmark, currentFrame)
 
                             Thread.sleep(1000)
                         }
@@ -679,7 +705,8 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                     }
 
                     val pfdResult: PfdResult? =
-                        currentFrame?.let { it1 -> pfdHelper.pfdInference(it1, pfdSession) }
+                        globalFrameList.last()
+                            .let { it1 -> pfdHelper.pfdInference(it1.bitmap!!, pfdSession) }
 
                     requireActivity().runOnUiThread(java.lang.Runnable {
                         // hide loading spinner
@@ -747,8 +774,8 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
 
                         converter?.setSurfaceTextureAndAttachToGLContext(
                             previewFrameTexture,
-                            frameSize.width,
-                            frameSize.height
+                            1080,
+                            1980
                         )
                     }
 
@@ -788,7 +815,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
 
     private fun drawPreview(
         pfdResult: PfdResult,
-        localLandmark: LandmarkProto.NormalizedLandmarkList?,
+        localLandmark: NormalizedLandmarkList?,
         bitmap: Bitmap?
     ) {
         previewView.post {
