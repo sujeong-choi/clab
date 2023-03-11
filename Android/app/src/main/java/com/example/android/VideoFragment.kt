@@ -323,7 +323,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                     val poseWorldLandmarks: LandmarkProto.LandmarkList =
                         LandmarkProto.LandmarkList.parseFrom(landmarksRaw)
                     if (enableHarInference)
-                        harHelper.saveSkeletonData(poseWorldLandmarks)
+                        skeletonBuffer.add(harHelper.saveSkeletonData(poseWorldLandmarks))
                 }
 
                 if (((System.currentTimeMillis() / 1000) - (lastFrameTime / 1000)) > 1) {
@@ -396,10 +396,13 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
         //for fast refreshing
         val curSkeletonBuffer = ArrayList<D2Array<Float>>()
         curSkeletonBuffer.addAll(skeletonBuffer)
+        Log.v(TAG, "HAR Size: ${skeletonBuffer.size}, ${curSkeletonBuffer.size}")
         skeletonBuffer.clear()
 
         val input = harHelper.convertSkeletonData(curSkeletonBuffer)
         val label: String = harHelper.harInference(input, harSession)
+
+        Log.v(TAG, "HAR Label: $label")
 
         requireActivity().runOnUiThread(java.lang.Runnable {
             toggleHarLabel(label)
@@ -523,7 +526,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
 
         // live start and stop on click listeners
         recordButton.setOnClickListener {
-//            rectOverlay.clear()
+            rectOverlay.clear()
             isRecording = !isRecording
 
             if (isRecording) {
@@ -824,7 +827,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                                 )
                             }
 
-                            initialCapture = false
+                            if(initialCapture) initialCapture = false
 
                             previewViewSmall.setImageBitmap(transformedBitmap)
                             previewViewSmall.invalidate()
