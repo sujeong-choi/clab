@@ -15,20 +15,19 @@ import android.view.View
 class RectOverlay constructor(context: Context?, attributeSet: AttributeSet?) :
     View(context, attributeSet) {
 
-    private lateinit var frameSize: Size
-    private val targetSize: Int = 512
+    lateinit var frameSize: Size
     private lateinit var keyPoints: MutableList<FloatArray>
     private lateinit var bbox: FloatArray
     private var isDrawn: Boolean = false
     private var enableBoundingBox: Boolean = false
-    private var radius: Int = 25
+    private var radius: Int = 15
     private val rectPaint = Paint().apply {
         color = Color.GREEN
         style = Paint.Style.STROKE
         strokeWidth = 10f
     }
     private val paint = Paint().apply {
-        color = Color.WHITE
+        color = Color.GREEN
     }
     private val rect = Rect()
 
@@ -47,6 +46,21 @@ class RectOverlay constructor(context: Context?, attributeSet: AttributeSet?) :
                 val ky = keypoint[1].toInt()
                 canvas?.drawCircle(kx.toFloat(), ky.toFloat(), radius.toFloat(), paint)
             }
+
+            // get max and min x and y values
+            val minX = localKeypoint.minByOrNull { it[0] }?.get(0) ?: 0.0f
+            val minY = localKeypoint.minByOrNull { it[1] }?.get(1) ?: 0.0f
+            val maxX = localKeypoint.maxByOrNull { it[0] }?.get(0) ?: 0.0f
+            val maxY = localKeypoint.maxByOrNull { it[1] }?.get(1) ?: 0.0f
+
+
+            canvas?.drawRect(
+                minX,
+                minY,
+                maxX,
+                maxY,
+                rectPaint
+            )
 
             // for drawing a bounding box
             if (enableBoundingBox) {
@@ -87,8 +101,8 @@ class RectOverlay constructor(context: Context?, attributeSet: AttributeSet?) :
         val resizedOutput = PfdResult()
 
         // custom image size
-        val widthRatio = frameSize.width / targetSize.toFloat()
-        val heightRatio = frameSize.height / targetSize.toFloat()
+        val widthRatio = frameSize.width / GlobalVars.targetMediapipeRes.width.toFloat()
+        val heightRatio = frameSize.height / GlobalVars.targetMediapipeRes.height.toFloat()
 
         // resize bbox and keypoint
         resizedOutput.bbox.value.add(

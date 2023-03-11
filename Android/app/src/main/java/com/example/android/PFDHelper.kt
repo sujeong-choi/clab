@@ -22,6 +22,7 @@ import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.concurrent.thread
 import kotlin.math.abs
+import kotlin.math.max
 import org.opencv.core.Point as CVPoint
 
 
@@ -45,7 +46,7 @@ class PFDHelper(val context: Context) {
     private val DIM_BATCH_SIZE = 1
     private val DIM_PIXEL_SIZE = 3
     private val targetSize: Int = 512
-    private val targetMediapipeRes: Size = Size(1080.0, 1980.0)
+
     private val visibilityThreshold = 0.75
 
     fun preProcess(bitmap: Bitmap): FloatBuffer {
@@ -126,8 +127,9 @@ class PFDHelper(val context: Context) {
                 e.message?.let { it1 -> Log.v("PFD", it1) }
             }
 
-            return if (sortedOutput.isNotEmpty())
+            return if (sortedOutput.isNotEmpty()) {
                 preprocessOutput(sortedOutput)
+            }
             else {
                 return PfdResult()
             }
@@ -164,7 +166,10 @@ class PFDHelper(val context: Context) {
 
         processedOutput.size = size
 
-        // to be used when input image is resized, output keypoints also need to be resized
+        // resize keypoints from 512x512 to mediaPipeSize
+        val resizedKeypoints = resizeKeypointsToMediapipe(processedOutput.keypoint.value[0])
+        processedOutput.keypoint.value[0] = resizedKeypoints
+
         return processedOutput
     }
 
@@ -175,17 +180,14 @@ class PFDHelper(val context: Context) {
         val resizedOutput: MutableList<FloatArray> = mutableListOf()
 
         // custom image size
-        val widthRatio = targetMediapipeRes.width / targetSize.toFloat()
-        val heightRatio = targetMediapipeRes.height / targetSize.toFloat()
-
-
-        // resize keypoints
+        val widthRatio = GlobalVars.targetMediapipeRes.width / targetSize.toFloat()
+        val heightRatio = GlobalVars.targetMediapipeRes.height / targetSize.toFloat()
 
         for (kp in keypoints) {
             resizedOutput.add(
                 floatArrayOf(
-                    (kp[0] * widthRatio).toFloat(),
-                    (kp[1] * heightRatio).toFloat()
+                    kp[0] * widthRatio,
+                    kp[1] * heightRatio
 
                 )
             )
@@ -194,17 +196,37 @@ class PFDHelper(val context: Context) {
         return resizedOutput
     }
 
+    private fun resizeBboxToMediapipe(
+        bbox: FloatArray
+    ): FloatArray {
+
+        // custom image size
+        val widthRatio = GlobalVars.targetMediapipeRes.width / targetSize.toFloat()
+        val heightRatio = GlobalVars.targetMediapipeRes.height / targetSize.toFloat()
+
+
+        // resize keypoints
+        var resizedOutput: FloatArray = floatArrayOf(
+            (bbox[0] * widthRatio).toFloat(),
+            (bbox[1] * heightRatio).toFloat(),
+            (bbox[2] * widthRatio).toFloat(),
+            (bbox[3] * heightRatio).toFloat()
+        )
+
+        return resizedOutput
+    }
+
     fun isHandInFrame(
         inputFrame: Bitmap,
-        bbox: FloatArray,
+        keypoint: MutableList<FloatArray>,
         landMarks: LandmarkProto.NormalizedLandmarkList?,
         isStrict: Boolean = false
     ): Boolean {
         if (landMarks != null) {
             val filteredLandmarks = landMarks.landmarkList.toList().slice(1..22)
 
-            val frameWidth = inputFrame.width
-            val frameHeight = inputFrame.height
+            val inputImageWidth = inputFrame.width
+            val inputImageHeight = inputFrame.height
 
             // only use x and y coordinates from filteredLandmarks list
             // convert coordinates to the correct aspect ratio
@@ -221,15 +243,21 @@ class PFDHelper(val context: Context) {
                 else if (landmark.visibility >= visibilityThreshold)
                     poseLandmarks.add(
                         floatArrayOf(
-                            landmark.x * frameWidth,
-                            landmark.y * frameHeight
+                            (landmark.x * GlobalVars.targetMediapipeRes.width).toFloat(),
+                            (landmark.y * GlobalVars.targetMediapipeRes.height).toFloat()
                         )
                     )
             }
 
+            // get max and min x and y values
+            val minX = keypoint.minByOrNull { it[0] }?.get(0) ?: 0.0f
+            val minY = keypoint.minByOrNull { it[1] }?.get(1) ?: 0.0f
+            val maxX = keypoint.maxByOrNull { it[0] }?.get(0) ?: 0.0f
+            val maxY = keypoint.maxByOrNull { it[1] }?.get(1) ?: 0.0f
+
             for (pose in poseLandmarks) {
                 // check if point is inside or outside the bbox
-                if (isPointInsideRectangle(pose, bbox)) {
+                if (isPointInsideRectangle(pose, floatArrayOf(minX, minY, maxX, maxY))) {
                     return true
                 }
             }
@@ -241,15 +269,14 @@ class PFDHelper(val context: Context) {
 
     private fun isPointInsideRectangle(
         point: FloatArray,
-        bbox: FloatArray,
-        bufferZone: Int = 5
+        keypoints: FloatArray,
+        bufferZone: Int = 0
     ): Boolean {
-        // resize points to 720*1980
 
-        val topLeftX = bbox[0] - bufferZone
-        val topLeftY = bbox[1] - bufferZone
-        val bottomRightX = bbox[2] + bufferZone
-        val bottomRightY = bbox[3] + bufferZone
+        val topLeftX = keypoints[0] - bufferZone
+        val topLeftY = keypoints[1] - bufferZone
+        val bottomRightX = keypoints[2] + bufferZone
+        val bottomRightY = keypoints[3] + bufferZone
 
         val pointX = point[0]
         val pointY = point[1]
@@ -350,7 +377,6 @@ class PFDHelper(val context: Context) {
     /**
      * This function saves a bitmap to internal storage with a specific ID and count.
      * It returns the file path of the saved bitmap.
-     * @param context The context of the application.
      * @param bitmap The bitmap to save.
      * @param id The specific ID to use in the file name.
      * @param count The count to use in the file name.
@@ -402,30 +428,27 @@ class PFDHelper(val context: Context) {
     }
 
     fun perspectiveTransformation(imageBitmap: Bitmap, keyPoints: MutableList<FloatArray>): Bitmap {
-        // resize keypoints to match mediapipe processing size
-        val resizedKeypoints = resizeKeypointsToMediapipe(keyPoints)
-
         val imgMat = commonUtils.bitmapToMat(imageBitmap)
 
-        val topLeft = resizedKeypoints[0]
-        val topRight = resizedKeypoints[3]
-        val bottomLeft = resizedKeypoints[1]
-        val bottomRight = resizedKeypoints[2]
+        val topLeft = keyPoints[0]
+        val topRight = keyPoints[3]
+        val bottomLeft = keyPoints[1]
+        val bottomRight = keyPoints[2]
 
-        val imgWidth = abs(topLeft[0] - topRight[0])
-        val imgHeight = abs(topLeft[1] - bottomLeft[1])
+        val imgWidth = max(abs(topLeft[0] - topRight[0]), abs(bottomLeft[0]-bottomRight[0]))
+        val imgHeight = max(abs(topLeft[1] - bottomLeft[1]),abs(topRight[1]-bottomRight[1]))
 
         val srcPoints = arrayOf(
-            CVPoint(topLeft[0].toDouble(), topLeft[1].toDouble()),
-            CVPoint(topRight[0].toDouble(), topRight[1].toDouble()),
-            CVPoint(bottomRight[0].toDouble(), bottomRight[1].toDouble()),
-            CVPoint(bottomLeft[0].toDouble(), bottomLeft[1].toDouble())
+            CVPoint(topLeft[0].toDouble(), (topLeft[1]).toDouble()),
+            CVPoint(topRight[0].toDouble(), (topRight[1]).toDouble()),
+            CVPoint(bottomRight[0].toDouble(), (bottomRight[1]).toDouble()),
+            CVPoint(bottomLeft[0].toDouble(), (bottomLeft[1]).toDouble())
         )
         val dstPoints = arrayOf(
             CVPoint(0.0, 0.0),
-            CVPoint(imgWidth.toDouble(), 0.0),
-            CVPoint(imgWidth.toDouble(), imgHeight.toDouble()),
-            CVPoint(0.0, imgHeight.toDouble())
+            CVPoint(imgWidth.toDouble() - 1, 0.0),
+            CVPoint(imgWidth.toDouble() - 1, imgHeight.toDouble() - 1),
+            CVPoint(0.0, imgHeight.toDouble() - 1)
         )
 
         // Perform perspective transformation
@@ -447,7 +470,7 @@ class PFDHelper(val context: Context) {
     // perspective transformation for a list of bitmaps instead of one
     fun perspectiveTransformation(
         imageBitmapList: List<Bitmap>,
-        keyPoint: MutableList<FloatArray>
+        keyPoint: MutableList<FloatArray>,
     ): List<Bitmap> {
 
         val transformedList: List<Bitmap> = mutableListOf<Bitmap>()
