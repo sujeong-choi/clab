@@ -49,35 +49,14 @@ class PFDHelper(val context: Context) {
 
     private val visibilityThreshold = 0.75
 
-    fun preProcess(bitmap: Bitmap): FloatBuffer {
-        val imgWidth = bitmap.width
-        val imgHeight = bitmap.height
-
-        val imgData = FloatBuffer.allocate(
-            DIM_BATCH_SIZE
-                    * DIM_PIXEL_SIZE
-                    * imgWidth
-                    * imgHeight
-        )
-        imgData.rewind()
-        val stride = imgWidth * imgHeight
-        val bmpData = IntArray(stride)
-        bitmap.getPixels(bmpData, 0, imgWidth, 0, 0, imgWidth, imgHeight)
-        for (i in 0..imgWidth - 1) {
-            for (j in 0..imgHeight - 1) {
-                val idx = imgHeight * i + j
-                val pixelValue = bmpData[idx]
-                imgData.put(idx, ((pixelValue shr 16 and 0xFF) / 255f))
-                imgData.put(idx + stride, ((pixelValue shr 8 and 0xFF) / 255f))
-                imgData.put(idx + stride * 2, ((pixelValue and 0xFF) / 255f))
-            }
-        }
-
-        imgData.rewind()
-        return imgData
-    }
-
-
+    /**
+     * Performs object detection inference on a given bitmap image using the ONNX runtime.
+     * @param bitmap the bitmap image to perform inference on.
+     * @param pfdSession the ONNX session for performing inference.
+     * @return PfdResult object containing the output of the inference, including bounding box coordinates,
+     * one-hot encoded labels, scores for each bounding box, and keypoint information.
+     * @throws OrtException if there is an issue running the inference.
+     */
     fun pfdInference(bitmap: Bitmap, pfdSession: OrtSession?): PfdResult {
         // output object
         val sortedOutput = mutableMapOf<String, Any>()
@@ -136,8 +115,50 @@ class PFDHelper(val context: Context) {
         }
     }
 
+    /**
+     * Preprocesses a given bitmap for use as an input tensor in the PFD model.
+     * The bitmap is resized and converted to a float buffer containing pixel values
+     * normalized to the range [0, 1].
+     * @param bitmap The bitmap to preprocess.
+     * @return A float buffer containing the preprocessed pixel data.
+     */
+    fun preProcess(bitmap: Bitmap): FloatBuffer {
+        val imgWidth = bitmap.width
+        val imgHeight = bitmap.height
+
+        val imgData = FloatBuffer.allocate(
+            DIM_BATCH_SIZE
+                    * DIM_PIXEL_SIZE
+                    * imgWidth
+                    * imgHeight
+        )
+        imgData.rewind()
+        val stride = imgWidth * imgHeight
+        val bmpData = IntArray(stride)
+        bitmap.getPixels(bmpData, 0, imgWidth, 0, 0, imgWidth, imgHeight)
+        for (i in 0..imgWidth - 1) {
+            for (j in 0..imgHeight - 1) {
+                val idx = imgHeight * i + j
+                val pixelValue = bmpData[idx]
+                imgData.put(idx, ((pixelValue shr 16 and 0xFF) / 255f))
+                imgData.put(idx + stride, ((pixelValue shr 8 and 0xFF) / 255f))
+                imgData.put(idx + stride * 2, ((pixelValue and 0xFF) / 255f))
+            }
+        }
+
+        imgData.rewind()
+        return imgData
+    }
+
+    /**
+     * Processes the output of the PFD model by filtering the keypoints and bounding boxes based on a score threshold.
+     * @param modelOutput the output of the PFD model as a MutableMap<String, Any> object.
+     * @param pfdThreshold the threshold for filtering the keypoints and bounding boxes based on their scores. Default value is 0.75
+     * @return PfdResult object that contains the processed keypoints and bounding boxes.
+     */
     private fun preprocessOutput(
-        modelOutput: MutableMap<String, Any>
+        modelOutput: MutableMap<String, Any>,
+        pfdThreshold: Double = 0.75
     ): PfdResult {
         // check if scores for both bbox and keypoints
         // filter them by score > 0.8
@@ -150,7 +171,7 @@ class PFDHelper(val context: Context) {
         var size = 0
 
         for (idx in scores.indices) {
-            if (scores[idx] >= 0.7) {
+            if (scores[idx] >= pfdThreshold) {
                 // add boxes to processed output
                 val bbox: FloatArray = bboxes[idx]
                 processedOutput.bbox.value.add(bbox)
@@ -167,13 +188,19 @@ class PFDHelper(val context: Context) {
         processedOutput.size = size
 
         // resize keypoints from 512x512 to mediaPipeSize
-        val resizedKeypoints = resizeKeypointsToMediapipe(processedOutput.keypoint.value[0])
-        processedOutput.keypoint.value[0] = resizedKeypoints
+        if(processedOutput.keypoint.value.size > 0) {
+            val resizedKeypoints = resizeKeypointsToMediapipe(processedOutput.keypoint.value[0])
+            processedOutput.keypoint.value[0] = resizedKeypoints
+        }
 
         return processedOutput
     }
 
-    // resize keypoint outputs
+    /**
+     * Resizes the keypoints to the size compatible with the Mediapipe model.
+     * @param keypoints the original list of keypoints to be resized
+     * @return the resized keypoints as a MutableList<FloatArray>
+     */
     private fun resizeKeypointsToMediapipe(
         keypoints: MutableList<FloatArray>
     ): MutableList<FloatArray> {
@@ -196,6 +223,11 @@ class PFDHelper(val context: Context) {
         return resizedOutput
     }
 
+    /**
+     * Resizes the keypoints to the target size of the Mediapipe model.
+     * @param keypoints the list of keypoints to be resized.
+     * @return a list of resized keypoints.
+     */
     private fun resizeBboxToMediapipe(
         bbox: FloatArray
     ): FloatArray {
@@ -216,6 +248,16 @@ class PFDHelper(val context: Context) {
         return resizedOutput
     }
 
+    /**
+     * Determines whether a hand is in the frame of a given input frame by checking the location of its keypoints
+     * relative to the detected human pose landmarks. If isStrict is set to true, it enforces the presence
+     * of a human skeleton in the picture to test if the hand is in the frame or not.
+     * @param inputFrame The input bitmap frame to check for a hand.
+     * @param keypoint A list of keypoint coordinates for the hand.
+     * @param landMarks The list of human pose landmarks detected in the frame.
+     * @param isStrict If true, it enforces human skeleton presence in picture to test if hand is in frame or not.
+     * @return true if the hand is in the frame; false otherwise.
+     */
     fun isHandInFrame(
         inputFrame: Bitmap,
         keypoint: MutableList<FloatArray>,
@@ -224,9 +266,6 @@ class PFDHelper(val context: Context) {
     ): Boolean {
         if (landMarks != null) {
             val filteredLandmarks = landMarks.landmarkList.toList().slice(1..22)
-
-            val inputImageWidth = inputFrame.width
-            val inputImageHeight = inputFrame.height
 
             // only use x and y coordinates from filteredLandmarks list
             // convert coordinates to the correct aspect ratio
@@ -284,6 +323,15 @@ class PFDHelper(val context: Context) {
         return pointX in topLeftX..bottomRightX && pointY in topLeftY..bottomRightY
     }
 
+    /**
+     * Compares two input images to check if they are different by computing the mean square error (MSE) between the grayscale
+     * versions of the images. If the MSE is greater than the specified threshold, the function returns true, indicating
+     * that the images are different. Otherwise, the function returns false.
+     * @param inputFrame The current input image to compare
+     * @param prevInputFrame The previous input image to compare
+     * @param threshold The threshold value for the MSE above which the images are considered different. Default is 0.0.
+     * @return Returns true if the two images are different, false otherwise.
+     */
     fun compareImages(inputFrame: Bitmap, prevInputFrame: Bitmap, threshold: Double): Boolean {
         val img1 = Mat()
         val img2 = Mat()
@@ -311,6 +359,14 @@ class PFDHelper(val context: Context) {
     }
 
 
+    /**
+     * Saves a video from a list of bitmaps to internal storage as an mp4 file using the given fps.
+     * The video is saved under the "timelapse" folder with a filename of "timelapse.mp4".
+     * @param fps the frames per second for the output video
+     * @param timeLapseId the id of the timelapse to save
+     * @param totalFrames the total number of frames in the timelapse
+     * @return true if the video was successfully saved, false otherwise
+     */
     fun saveVideoFromBitmaps(
         fps: Int,
         timeLapseId: String,
@@ -369,6 +425,10 @@ class PFDHelper(val context: Context) {
         return "$fileDir/$fileName"
     }
 
+    /**
+     * This function gets the id of the timelapse based on current time and date
+     * @return a string containing a unique timelapse id to be used for filename
+     */
     fun getTimelapseId(): String {
         val dateFormat = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault())
         return dateFormat.format(Date())
@@ -380,6 +440,7 @@ class PFDHelper(val context: Context) {
      * @param bitmap The bitmap to save.
      * @param id The specific ID to use in the file name.
      * @param count The count to use in the file name.
+     * @return a string of the saved bitmap
      */
     fun saveBitmapToInternalStorage(bitmap: Bitmap, id: String, count: Int): String {
         val filename = "${id}_$count.png"
@@ -427,6 +488,14 @@ class PFDHelper(val context: Context) {
         return bitmapList.toTypedArray()
     }
 
+    /**
+     * Applies perspective transformation to the input image based on the given key points.
+     * @param imageBitmap The input image bitmap.
+     * @param keyPoints A list of key points that define the region of interest in the input image.
+     * The first key point should correspond to the top-left corner of the ROI, and the subsequent
+     * points should be specified in clockwise order.
+     * @return The transformed image bitmap.
+     */
     fun perspectiveTransformation(imageBitmap: Bitmap, keyPoints: MutableList<FloatArray>): Bitmap {
         val imgMat = commonUtils.bitmapToMat(imageBitmap)
 
@@ -467,7 +536,12 @@ class PFDHelper(val context: Context) {
         return commonUtils.matToBitmap(transformedMat)!!
     }
 
-    // perspective transformation for a list of bitmaps instead of one
+    /**
+     * Applies perspective transformation on a list of input bitmaps using the provided key points.
+     * @param imageBitmapList List of bitmaps to apply the transformation on.
+     * @param keyPoint The key points to use for the transformation.
+     * @return The list of transformed bitmaps.
+     */
     fun perspectiveTransformation(
         imageBitmapList: List<Bitmap>,
         keyPoint: MutableList<FloatArray>,

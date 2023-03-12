@@ -28,11 +28,15 @@ class VadService(
         AudioFormat.ENCODING_PCM_16BIT, bufferSize * 2
     )
 
-   private val recognizer: Recognizer = Recognizer()
+    private val recognizer: Recognizer = Recognizer()
     private var recognizerThread: RecognizerThread? = null
     private val mainHandler = Handler(Looper.getMainLooper())
 
-    // start recognizer thread ot listen to audio and make vad predictions
+    /**
+     * Starts the voice recognition service and sets the recognition listener to receive recognition results.
+     * @param listener the listener to receive recognition results.
+     * @return true if the service has been started successfully, false otherwise.
+     */
     fun startListening(listener: RecognitionListener): Boolean {
         if (recognizerThread != null) return false
         recognizerThread = RecognizerThread(listener)
@@ -41,7 +45,10 @@ class VadService(
         return true
     }
 
-    // stop recognizer thread to freeup resources
+    /**
+     * Stops the current recognizer thread if there is one running.
+     * @return true if a recognizer thread was running and was successfully stopped, false otherwise.
+     */
     private fun stopRecognizerThread(): Boolean {
         if (recognizerThread == null) return false
         try {
@@ -73,6 +80,10 @@ class VadService(
         recognizerThread?.setPause(paused)
     }
 
+    /**
+     * Private inner class for running the speech recognition on a separate thread.
+     * @param listener The RecognitionListener to send recognition results to.
+     */
     private inner class RecognizerThread(
         var listener: RecognitionListener
     ) : Thread() {
@@ -107,6 +118,15 @@ class VadService(
         }
     }
 
+    /**
+     * The Recognizer class represents a PyTorch model that performs voice activity detection (VAD).
+     * The class loads a pre-trained model from the assets folder and uses it to perform real-time
+     * voice detection on incoming audio data. The class relies on the PyTorch Android API to load
+     * and use the model.
+     * @property context The context of the Android application that uses this class.
+     * @property vadModule The PyTorch module that performs voice activity detection.
+     * @constructor Creates an instance of the Recognizer class.
+     */
     private inner class Recognizer() {
         private val vadModule: Module by lazy {
             loadModule("vad.jit").also {
@@ -114,17 +134,36 @@ class VadService(
             }
         }
 
+        /**
+         * Given an input float array buffer, uses a preloaded PyTorch module for Voice Activity Detection (VAD) to determine if the chunk has voice or not.
+         * @param floatInputBuffer Input float array buffer to check for voice.
+         * @return A float representing the probability that the chunk has voice.
+         */
         fun checkIfChunkHasVoice(floatInputBuffer: FloatArray): Float {
             val result = vadModule.getResult(floatInputBuffer)
             return result.toTensor().dataAsFloatArray[1]
         }
 
+        /**
+         * Given a path to a PyTorch module file, loads the module and returns it.
+         * @param path The path to the PyTorch module file.
+         * @return The loaded PyTorch module.
+         */
         private fun loadModule(path: String): Module {
             val modulePath = assetFilePath(context, path)
             val moduleFileAbsoluteFilePath = File(modulePath).absolutePath
             return Module.load(moduleFileAbsoluteFilePath)
         }
 
+        /**
+         * Returns the absolute file path of the given asset in the app's file directory.
+         * If the file already exists, its path is returned. Otherwise, the asset is opened
+         * and copied to the file directory before its path is returned.
+         * @param context the context of the app
+         * @param assetName the name of the asset file
+         * @return the absolute file path of the asset in the app's file directory
+         * @throws IOException if an I/O error occurs while reading the asset or writing to the file directory
+         */
         private fun assetFilePath(context: Context, assetName: String): String {
             val file = File(context.filesDir, assetName)
             if (file.exists() && file.length() > 0) {
@@ -143,6 +182,14 @@ class VadService(
             }
         }
 
+        /**
+         * Gets the result from the module by passing in a float input buffer as a parameter.
+         * The float input buffer is first converted to a Tensor object, which is then passed
+         * to the forward method along with an IValue object. The resulting IValue object
+         * is returned.
+         * @param floatInputBuffer a FloatArray containing the input buffer.
+         * @return the IValue object obtained from the forward method.
+         */
         private fun Module.getResult(floatInputBuffer: FloatArray): IValue {
             val inTensorBuffer = Tensor.allocateFloatBuffer(floatInputBuffer.size)
             inTensorBuffer.put(floatInputBuffer)

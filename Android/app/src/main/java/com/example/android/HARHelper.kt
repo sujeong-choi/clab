@@ -13,8 +13,6 @@ import org.jetbrains.kotlinx.multik.ndarray.operations.expandDims
 import org.jetbrains.kotlinx.multik.ndarray.operations.stack
 import org.jetbrains.kotlinx.multik.ndarray.operations.toFloatArray
 import java.nio.FloatBuffer
-import java.util.concurrent.Executor
-import java.util.concurrent.Executors
 import kotlin.math.exp
 
 
@@ -23,11 +21,8 @@ import kotlin.math.exp
  */
 class HARHelper(val context: Context) {
     private var isListening: Boolean = false
-    private val classificationExecutor: Executor = Executors.newSingleThreadExecutor()
     private var previousLabel = 0
-    private var previousVad = 0
     private var updatedLabel = 0
-    private var updatedVad = 0
     private var vadProb: Float = 0f
 
     // vad variables
@@ -35,7 +30,12 @@ class HARHelper(val context: Context) {
         VadService(context)
     }
 
-
+    /**
+     * Runs inference on a given input skeleton using a given HAR session and returns the predicted action label.
+     * @param inputSkeleton The input skeleton represented as a MultiArray<Float, DN> object.
+     * @param harSession The HAR session to use for inference.
+     * @return The predicted action label as a string.
+     */
     fun harInference(inputSkeleton: MultiArray<Float, DN>, harSession: OrtSession?): String {
         val shape = longArrayOf(1, 3, 144, 25, 2)
 
@@ -66,7 +66,16 @@ class HARHelper(val context: Context) {
         }
     }
 
-    // get label for harPrediction
+    /**
+     * This function takes the output of a HAR (Human Activity Recognition) model and a VAD (Voice Activity Detection) model,
+     * and returns a label string representing the recognized activity. It uses the softmax function to convert the
+     * output of the HAR model into a probability distribution, then identifies the top three values and returns the label
+     * associated with the highest value. If the highest value corresponds to an interview activity and there is no voice detected,
+     * the function returns the "unknown" label. It also keeps track of the previous and updated label to smooth the output.
+     * @param harOutput the output of the HAR model as a FloatArray
+     * @param vadOutput the output of the VAD model as a Float value
+     * @return a String representing the recognized activity
+     */
     private fun getLabel(harOutput: FloatArray, vadOutput: Float): String {
         return try {
             val harOutProb = softmax(harOutput)
@@ -109,7 +118,11 @@ class HARHelper(val context: Context) {
         }
     }
 
-    // softmax function to convert the original output to softmax
+    /**
+     * Computes the softmax activation function for the given input array.
+     * @param input the input array of floats
+     * @return the output array after applying softmax activation
+     */
     private fun softmax(input: FloatArray): FloatArray {
         val output = FloatArray(input.size)
         var sum = 0.0f
@@ -128,7 +141,11 @@ class HARHelper(val context: Context) {
         return output
     }
 
-    //save skeleton data in one frame and append to (144,25,3) ndarray
+    /**
+     * Saves the skeleton data from a single frame of pose landmarks.
+     * @param poseLandmarks a LandmarkProto.LandmarkList containing pose landmarks for a single frame
+     * @return a D2Array<Float> containing the skeleton data
+     */
     fun saveSkeletonData(poseLandmarks: LandmarkProto.LandmarkList): D2Array<Float> {
         val oneFrameSkeleton = mk.d2array(25, 3) { 0.0f }
         val landmark = poseLandmarks.landmarkList
@@ -142,7 +159,15 @@ class HARHelper(val context: Context) {
         return oneFrameSkeleton
     }
 
-    // sample skeleton data for 60 frames
+    /**
+     * Samples skeleton data from skeletonBuffer to produce a 3D array of size (144, 25, 3).
+     * The input skeletonBuffer contains an array list of individual skeleton frames, where each frame
+     * contains 25 3D-coordinates (x, y, z) representing the pose landmarks.
+     * This function downsamples the skeletonBuffer by taking only 60 frames, evenly distributed
+     * over the length of the buffer. If the buffer has less than 60 frames, all frames are used.
+     * @param skeletonBuffer An array list of individual skeleton frames containing pose landmarks.
+     * @return A 3D array of size (144, 25, 3) representing the sampled skeleton data.
+     */
     private fun sampleSkeletonData(skeletonBuffer: ArrayList<D2Array<Float>>): D3Array<Float> {
         val framesSkeleton = mk.d3array(144, 25, 3) { 0.0f }
         val frameNum = skeletonBuffer.size
@@ -157,7 +182,17 @@ class HARHelper(val context: Context) {
         return framesSkeleton
     }
 
-    // convert shape of skeleton data to fit model
+    /**
+     * Converts a list of 2D arrays representing human skeleton data into a 5D tensor for input into the activity recognition model.
+     * The input list must have at least 60 frames of skeleton data. If it has more than 60 frames, this function will sample
+     * 60 frames uniformly from the input list. If it has fewer than 60 frames, the function will duplicate the frames to create
+     * 60 frames of data.
+     * The resulting tensor will have dimensions (1, 3, 144, 25, 2), where the first dimension is the batch size (always 1), the
+     * second dimension is the number of channels, the third dimension is the time step, the fourth dimension is the number of joints,
+     * and the fifth dimension is the x, y, and z coordinates for each joint.
+     * @param skeletonBuffer List of 2D arrays representing human skeleton data
+     * @return A 5D tensor of shape (1, 3, 144, 25, 2) containing the skeleton data in a format suitable for input into the activity recognition model
+     */
     fun convertSkeletonData(skeletonBuffer: ArrayList<D2Array<Float>>): MultiArray<Float, DN> {
         //dummy humman skeleton data to align the input dimension of the model
         val humansSkeleton =
@@ -165,7 +200,11 @@ class HARHelper(val context: Context) {
         return humansSkeleton.transpose(3, 1, 2, 0).expandDims(axis = 0)
     }
 
-    // void activity detection listener
+    /**
+     * An implementation of RecognitionListener interface used for handling events related to voice activity detection (VAD).
+     * This listener updates the vadProb variable with the probability of voice activity detected by the VAD model.
+     * @property vadProb a Float variable that holds the probability of voice activity detected by the VAD model.
+     */
     private val recognitionListener = object : RecognitionListener {
         override fun onResult(hypothesis: Float?) {
             if (hypothesis != null)
@@ -177,7 +216,11 @@ class HARHelper(val context: Context) {
         }
     }
 
-    // start or stop vadInference
+    /**
+     * Triggers the Voice Activity Detection (VAD) service to start or stop listening based on its current state.
+     * If it is not currently listening, it starts listening and sets the [recognitionListener] to receive the result.
+     * If it is currently listening, it stops the VAD service.
+     */
     fun vadInference() {
         if (!isListening) {
             vadService.startListening(recognitionListener)

@@ -47,28 +47,19 @@ class RectOverlay constructor(context: Context?, attributeSet: AttributeSet?) :
                 canvas?.drawCircle(kx.toFloat(), ky.toFloat(), radius.toFloat(), paint)
             }
 
-            // get max and min x and y values
-            val minX = localKeypoint.minByOrNull { it[0] }?.get(0) ?: 0.0f
-            val minY = localKeypoint.minByOrNull { it[1] }?.get(1) ?: 0.0f
-            val maxX = localKeypoint.maxByOrNull { it[0] }?.get(0) ?: 0.0f
-            val maxY = localKeypoint.maxByOrNull { it[1] }?.get(1) ?: 0.0f
-
-
-            canvas?.drawRect(
-                minX,
-                minY,
-                maxX,
-                maxY,
-                rectPaint
-            )
-
             // for drawing a bounding box
             if (enableBoundingBox) {
+                // get max and min x and y values
+                val minX = localKeypoint.minByOrNull { it[0] }?.get(0) ?: 0.0f
+                val minY = localKeypoint.minByOrNull { it[1] }?.get(1) ?: 0.0f
+                val maxX = localKeypoint.maxByOrNull { it[0] }?.get(0) ?: 0.0f
+                val maxY = localKeypoint.maxByOrNull { it[1] }?.get(1) ?: 0.0f
+
                 canvas?.drawRect(
-                    localBbox[0],
-                    localBbox[1],
-                    localBbox[2],
-                    localBbox[3],
+                    minX,
+                    minY,
+                    maxX,
+                    maxY,
                     rectPaint
                 )
             }
@@ -94,6 +85,12 @@ class RectOverlay constructor(context: Context?, attributeSet: AttributeSet?) :
         frameSize = size
     }
 
+    /**
+     * Resizes the bounding box and keypoints according to the target Mediapipe resolution.
+     * @param bbox The bounding box of the person in the frame as a FloatArray.
+     * @param keypoints The list of key points detected on the person in the frame.
+     * @return PfdResult object containing the resized bounding box and key points.
+     */
     fun resizeKeypoints(
         bbox: FloatArray,
         keypoints: MutableList<FloatArray>

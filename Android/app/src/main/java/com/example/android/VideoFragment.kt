@@ -1,6 +1,5 @@
 package com.example.android
 
-import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
@@ -35,16 +34,6 @@ import org.jetbrains.kotlinx.multik.ndarray.data.D2Array
 import org.opencv.android.OpenCVLoader
 import java.nio.ByteBuffer
 import kotlin.concurrent.thread
-
-
-class GlobalVars {
-    companion object {
-        @JvmField
-        // setup global onnx model environment
-        var ortEnv: OrtEnvironment = OrtEnvironment.getEnvironment()
-        var targetMediapipeRes: Size = Size(0, 0)
-    }
-}
 
 /**
  * Video Fragment contains all UI logic related to video processing, management of model files and display and using API
@@ -545,9 +534,10 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
 
                     System.gc()
 
-                    // init har model
+                    val env = GlobalVars.ortEnv
+
+                    // init har model if null
                     if (harSession == null) {
-                        val env = GlobalVars.ortEnv
                         harSession =
                             env.createSession(commonUtils.readModel(ModelType.HAR))
                     }
@@ -600,32 +590,29 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                 }
             } else {
                 requireActivity().runOnUiThread(java.lang.Runnable {
-                    // show loading spinner
+                    // clear recording UI and show loading screen
                     loadingView.visibility = View.VISIBLE
-
                     recordingCircle.visibility = View.GONE
                     frameCounter.visibility = View.GONE
                     harLabel.visibility = View.GONE
                     previewViewSmall.visibility = View.GONE
                     recordButton.text = "RECORD"
-
-                    // enable detect button while recording
                     detectButton.isEnabled = true
                 })
 
                 // stop HAR inference
                 enableHarInference = false
 
-                // stop har and vad prediction
-                harSession?.close()
-                harSession = null
-                harHelper.vadInference()
-
                 // stop timelapse thread
                 timelapseThread?.join()
 
                 // stop harSkeleton thread
                 harSkeletonThread?.join()
+
+                // stop har and vad prediction
+                harSession?.close()
+                harSession = null
+                harHelper.vadInference()
 
                 // save timelapse
                 val totalFrames: Int = frameCounter.text.toString().toInt() + 1
@@ -656,7 +643,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                 }
 
                 requireActivity().runOnUiThread(java.lang.Runnable {
-                    // show loading spinner
+                    // hide loading spinner
                     loadingView.visibility = View.GONE
                 })
             }
@@ -673,14 +660,15 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                 rectOverlay.clear()
 
                 detectThread = thread {
+                    val env = GlobalVars.ortEnv
+
                     if (pfdSession == null) {
-                        val env = GlobalVars.ortEnv
                         val modelFile = commonUtils.readModel(ModelType.PFD)
                         pfdSession =
                             env.createSession(modelFile)
                     }
 
-                    val pfdResult: PfdResult? =
+                    val pfdResult: PfdResult =
                         currentFrame
                             .let { it1 -> pfdHelper.pfdInference(it1!!, pfdSession) }
 
@@ -691,8 +679,8 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                         loadingView.visibility = View.GONE
                     })
 
-                    if (pfdResult?.size != 0) {
-                        globalPfdResult = pfdResult!!
+                    if (pfdResult.size != 0) {
+                        globalPfdResult = pfdResult
                         isKeypointSelected = true
 
                         // draw keyPoints on top of previewView
