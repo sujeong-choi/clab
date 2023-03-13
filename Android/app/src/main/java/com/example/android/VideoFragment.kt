@@ -1,6 +1,7 @@
 package com.example.android
 
 import ai.onnxruntime.OrtSession
+import ai.onnxruntime.providers.NNAPIFlags
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
@@ -33,6 +34,8 @@ import com.google.mediapipe.glutil.EglManager
 import org.jetbrains.kotlinx.multik.ndarray.data.D2Array
 import org.opencv.android.OpenCVLoader
 import java.nio.ByteBuffer
+import java.util.*
+import kotlin.concurrent.fixedRateTimer
 import kotlin.concurrent.thread
 
 /**
@@ -376,8 +379,15 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
     private fun setupOnnxModel() {
         val env = GlobalVars.ortEnv
         onnxOptions = OrtSession.SessionOptions()
-        onnxOptions.setIntraOpNumThreads(2)
+        onnxOptions.setIntraOpNumThreads(4)
+        onnxOptions.addNnapi(EnumSet.of(NNAPIFlags.CPU_DISABLED))
         onnxOptions.setExecutionMode(OrtSession.SessionOptions.ExecutionMode.PARALLEL)
+
+        val modelFile = commonUtils.readModel(ModelType.PFD)
+        pfdSession =
+            env.createSession(modelFile)
+
+
     }
 
     // get skeletons for HAR processing
@@ -523,8 +533,8 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
 
                 recordThread = thread {
                     // close PFD session for memory management
-                    pfdSession?.close()
-                    pfdSession = null
+//                    pfdSession?.close()
+//                    pfdSession = null
 
                     // set timelapse id to name file later
                     timelapseId = pfdHelper.getTimelapseId()
@@ -572,11 +582,15 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                     }
 
                     // thread that captures skeletons for HAR
-                    harSkeletonThread = thread {
-                        while (enableHarInference) {
-                            getSkeleton()
-                            Thread.sleep(4000)
-                        }
+//                    harSkeletonThread = thread {
+//                        while (enableHarInference) {
+//                            getSkeleton()
+//                            Thread.sleep(4000)
+//                        }
+//                    }
+
+                    val skeletonTimer = fixedRateTimer(name="SkeletonTimer", initialDelay = 0L, period = 4000L){
+                        getSkeleton()
                     }
 
                     requireActivity().runOnUiThread(java.lang.Runnable {
@@ -657,56 +671,54 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                 rectOverlay.clear()
 
                 detectThread = thread {
-                    val env = GlobalVars.ortEnv
-
-                    if (pfdSession == null) {
-                        val modelFile = commonUtils.readModel(ModelType.PFD)
-                        pfdSession =
-                            env.createSession(modelFile)
-                    }
-
-                    val pfdResult: PfdResult =
-                        currentFrame
-                            .let { it1 -> pfdHelper.pfdInference(it1!!, pfdSession) }
+                    if(currentFrame != null) {
+                        val pfdResult: PfdResult =
+                            currentFrame
+                                .let { it1 -> pfdHelper.pfdInference(it1!!, pfdSession) }
 
 //                    currentFrame?.recycle()
 
-                    requireActivity().runOnUiThread(java.lang.Runnable {
-                        // hide loading spinner
-                        loadingView.visibility = View.GONE
-                    })
-
-                    if (pfdResult.size != 0) {
-                        globalPfdResult = pfdResult
-                        isKeypointSelected = true
-
-                        // draw keyPoints on top of previewView
-                        drawKeypoints(globalPfdResult)
-
                         requireActivity().runOnUiThread(java.lang.Runnable {
-                            recordButton.isEnabled = true
+                            // hide loading spinner
+                            loadingView.visibility = View.GONE
                         })
 
-                    } else {
+                        if (pfdResult.size != 0) {
+                            globalPfdResult = pfdResult
+                            isKeypointSelected = true
+
+                            // draw keyPoints on top of previewView
+                            drawKeypoints(globalPfdResult)
+
+                            requireActivity().runOnUiThread(java.lang.Runnable {
+                                recordButton.isEnabled = true
+                            })
+
+                        } else {
+                            requireActivity().runOnUiThread {
+                                Toast.makeText(
+                                    requireContext(),
+                                    "Painting not detected!",
+                                    Toast.LENGTH_LONG
+                                )
+                                    .show()
+                            }
+                        }
+                    }
+                    else
                         requireActivity().runOnUiThread {
                             Toast.makeText(
                                 requireContext(),
-                                "Painting not detected!",
+                                "Mediapipe not initialized!",
                                 Toast.LENGTH_LONG
                             )
                                 .show()
+                            loadingView.visibility = View.GONE
                         }
-                    }
                 }
             } catch (e: Exception) {
                 // hide loading spinner
                 loadingView.visibility = View.GONE
-
-                // reinit model if ORT_FAIL
-                val env = GlobalVars.ortEnv
-                val modelFile = commonUtils.readModel(ModelType.PFD)
-                pfdSession =
-                    env.createSession(modelFile)
 
                 e.message?.let { it1 -> Log.v("Error", it1) }
             }

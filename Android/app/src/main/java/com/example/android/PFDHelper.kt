@@ -68,10 +68,12 @@ class PFDHelper(val context: Context) {
         val inputName0: String = inputNameIterator.next()
         val inputName1: String = inputNameIterator.next()
         val shape = longArrayOf(3, resizedBitmap.height.toLong(), resizedBitmap.width.toLong())
+        val processedImg = preProcess(resizedBitmap)
 
         val env = GlobalVars.ortEnv
+
         env.use {
-            val tensor0 = OnnxTensor.createTensor(env, preProcess(resizedBitmap), shape)
+            val tensor0 = OnnxTensor.createTensor(env, processedImg, shape)
 
             // send an empty bitmap to avoid extra computation
             val bufferSize = shape.reduce(Long::times).toInt()
@@ -83,7 +85,13 @@ class PFDHelper(val context: Context) {
             inputMap[inputName1] = tensor1
 
             try {
+                val startTime = System.currentTimeMillis() / 1000
                 val output = pfdSession.run(inputMap)
+                Log.v(
+                    "PFD",
+                    "Inference took: ${(System.currentTimeMillis() / 1000) - startTime} seconds"
+                )
+
 
                 val outputNames = pfdSession.outputNames.toList()
                 /*
@@ -121,29 +129,38 @@ class PFDHelper(val context: Context) {
      * @param bitmap The bitmap to preprocess.
      * @return A float buffer containing the preprocessed pixel data.
      */
-    fun preProcess(bitmap: Bitmap): FloatBuffer {
-        val imgWidth = bitmap.width
-        val imgHeight = bitmap.height
-
+    private fun preProcess(bitmap: Bitmap): FloatBuffer {
         val imgData = FloatBuffer.allocate(
             DIM_BATCH_SIZE
                     * DIM_PIXEL_SIZE
-                    * imgWidth
-                    * imgHeight
+                    * targetSize
+                    * targetSize
         )
         imgData.rewind()
-        val stride = imgWidth * imgHeight
+        val stride = targetSize * targetSize
         val bmpData = IntArray(stride)
-        bitmap.getPixels(bmpData, 0, imgWidth, 0, 0, imgWidth, imgHeight)
-        for (i in 0..imgWidth - 1) {
-            for (j in 0..imgHeight - 1) {
-                val idx = imgHeight * i + j
-                val pixelValue = bmpData[idx]
-                imgData.put(idx, ((pixelValue shr 16 and 0xFF) / 255f))
-                imgData.put(idx + stride, ((pixelValue shr 8 and 0xFF) / 255f))
-                imgData.put(idx + stride * 2, ((pixelValue and 0xFF) / 255f))
+        bitmap.getPixels(bmpData, 0, targetSize, 0, 0, targetSize, targetSize)
+
+        // use thread to parallelize loop
+        val numThreads = Runtime.getRuntime().availableProcessors()
+        val chunkSize = targetSize / numThreads
+
+        val threads = Array(numThreads) { n ->
+            Thread {
+                val start = n * chunkSize
+                val end = if (n == numThreads - 1) stride else start + chunkSize
+
+                for (idx in start until end) {
+                    val pixelValue = bmpData[idx]
+                    imgData.put(idx, ((pixelValue shr 16 and 0xFF) / 255f))
+                    imgData.put(idx + stride, ((pixelValue shr 8 and 0xFF) / 255f))
+                    imgData.put(idx + stride * 2, ((pixelValue and 0xFF) / 255f))
+                }
             }
         }
+
+        threads.forEach { it.start() }
+        threads.forEach { it.join() }
 
         imgData.rewind()
         return imgData
@@ -261,7 +278,7 @@ class PFDHelper(val context: Context) {
         keypoint: MutableList<FloatArray>,
         landMarks: LandmarkProto.NormalizedLandmarkList?,
         isStrict: Boolean = true,
-        bufferZone: Int = 10
+        bufferZone: Int = 0
     ): Boolean {
         if (landMarks != null) {
             // only use the first 22 landmarks from the total skeleton landmarks
@@ -323,7 +340,6 @@ class PFDHelper(val context: Context) {
         keypoints: FloatArray,
         bufferZone: Int
     ): Boolean {
-
         val topLeftX = keypoints[0] - bufferZone
         val topLeftY = keypoints[1] - bufferZone
         val bottomRightX = keypoints[2] + bufferZone
