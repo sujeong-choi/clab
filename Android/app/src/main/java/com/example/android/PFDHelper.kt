@@ -46,8 +46,8 @@ class PFDHelper(val context: Context) {
     private val DIM_BATCH_SIZE = 1
     private val DIM_PIXEL_SIZE = 3
     private val targetSize: Int = 512
-
     private val visibilityThreshold = 0.75
+    private var prevHandInFrame = true
 
     /**
      * Performs object detection inference on a given bitmap image using the ONNX runtime.
@@ -108,8 +108,7 @@ class PFDHelper(val context: Context) {
 
             return if (sortedOutput.isNotEmpty()) {
                 preprocessOutput(sortedOutput)
-            }
-            else {
+            } else {
                 return PfdResult()
             }
         }
@@ -188,7 +187,7 @@ class PFDHelper(val context: Context) {
         processedOutput.size = size
 
         // resize keypoints from 512x512 to mediaPipeSize
-        if(processedOutput.keypoint.value.size > 0) {
+        if (processedOutput.keypoint.value.size > 0) {
             val resizedKeypoints = resizeKeypointsToMediapipe(processedOutput.keypoint.value[0])
             processedOutput.keypoint.value[0] = resizedKeypoints
         }
@@ -252,23 +251,23 @@ class PFDHelper(val context: Context) {
      * Determines whether a hand is in the frame of a given input frame by checking the location of its keypoints
      * relative to the detected human pose landmarks. If isStrict is set to true, it enforces the presence
      * of a human skeleton in the picture to test if the hand is in the frame or not.
-     * @param inputFrame The input bitmap frame to check for a hand.
      * @param keypoint A list of keypoint coordinates for the hand.
      * @param landMarks The list of human pose landmarks detected in the frame.
      * @param isStrict If true, it enforces human skeleton presence in picture to test if hand is in frame or not.
+     * @param bufferZone increase human skeleton detection area by a margin
      * @return true if the hand is in the frame; false otherwise.
      */
     fun isHandInFrame(
-        inputFrame: Bitmap,
         keypoint: MutableList<FloatArray>,
         landMarks: LandmarkProto.NormalizedLandmarkList?,
-        isStrict: Boolean = false
+        isStrict: Boolean = true,
+        bufferZone: Int = 10
     ): Boolean {
         if (landMarks != null) {
+            // only use the first 22 landmarks from the total skeleton landmarks
             val filteredLandmarks = landMarks.landmarkList.toList().slice(1..22)
 
             // only use x and y coordinates from filteredLandmarks list
-            // convert coordinates to the correct aspect ratio
             val poseLandmarks: MutableList<FloatArray> = mutableListOf()
 
             for (landmark in filteredLandmarks) {
@@ -282,8 +281,8 @@ class PFDHelper(val context: Context) {
                 else if (landmark.visibility >= visibilityThreshold)
                     poseLandmarks.add(
                         floatArrayOf(
-                            (landmark.x * GlobalVars.targetMediapipeRes.width).toFloat(),
-                            (landmark.y * GlobalVars.targetMediapipeRes.height).toFloat()
+                            landmark.x * GlobalVars.targetMediapipeRes.width,
+                            landmark.y * GlobalVars.targetMediapipeRes.height
                         )
                     )
             }
@@ -294,13 +293,26 @@ class PFDHelper(val context: Context) {
             val maxX = keypoint.maxByOrNull { it[0] }?.get(0) ?: 0.0f
             val maxY = keypoint.maxByOrNull { it[1] }?.get(1) ?: 0.0f
 
+            var currentHandInFrame = false
+
             for (pose in poseLandmarks) {
                 // check if point is inside or outside the bbox
-                if (isPointInsideRectangle(pose, floatArrayOf(minX, minY, maxX, maxY))) {
-                    return true
+                if (isPointInsideRectangle(
+                        pose,
+                        floatArrayOf(minX, minY, maxX, maxY),
+                        bufferZone
+                    )
+                ) {
+                    // return true if any of the pose landmarks are inside the keypoints rectangle
+                    currentHandInFrame = true
                 }
             }
-            return false
+
+            val concatHandInFrame = prevHandInFrame || currentHandInFrame
+
+            prevHandInFrame = currentHandInFrame
+
+            return concatHandInFrame
         }
         // if isStrict is set to true, it enforces human skeleton presence in picture to test if hand is in frame or not
         return isStrict
@@ -309,7 +321,7 @@ class PFDHelper(val context: Context) {
     private fun isPointInsideRectangle(
         point: FloatArray,
         keypoints: FloatArray,
-        bufferZone: Int = 0
+        bufferZone: Int
     ): Boolean {
 
         val topLeftX = keypoints[0] - bufferZone
@@ -504,8 +516,8 @@ class PFDHelper(val context: Context) {
         val bottomLeft = keyPoints[1]
         val bottomRight = keyPoints[2]
 
-        val imgWidth = max(abs(topLeft[0] - topRight[0]), abs(bottomLeft[0]-bottomRight[0]))
-        val imgHeight = max(abs(topLeft[1] - bottomLeft[1]),abs(topRight[1]-bottomRight[1]))
+        val imgWidth = max(abs(topLeft[0] - topRight[0]), abs(bottomLeft[0] - bottomRight[0]))
+        val imgHeight = max(abs(topLeft[1] - bottomLeft[1]), abs(topRight[1] - bottomRight[1]))
 
         val srcPoints = arrayOf(
             CVPoint(topLeft[0].toDouble(), (topLeft[1]).toDouble()),

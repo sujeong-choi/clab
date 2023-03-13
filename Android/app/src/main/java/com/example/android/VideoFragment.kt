@@ -195,7 +195,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
             eglManager.context, 2
         )
         converter?.setFlipY(true)
-        converter?.setBufferPoolMaxSize(1)
+        converter?.setBufferPoolMaxSize(2)
         converter?.setConsumer(processor)
 
         // check camera permission and start camera
@@ -357,7 +357,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
             eglManager.context, 2
         )
         converter?.setFlipY(true)
-        converter?.setBufferPoolMaxSize(1)
+        converter?.setBufferPoolMaxSize(2)
         converter?.setConsumer(processor)
 
         // check camera permission and start camera
@@ -385,13 +385,10 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
         //for fast refreshing
         val curSkeletonBuffer = ArrayList<D2Array<Float>>()
         curSkeletonBuffer.addAll(skeletonBuffer)
-        Log.v(TAG, "HAR Size: ${skeletonBuffer.size}, ${curSkeletonBuffer.size}")
         skeletonBuffer.clear()
 
         val input = harHelper.convertSkeletonData(curSkeletonBuffer)
         val label: String = harHelper.harInference(input, harSession)
-
-        Log.v(TAG, "HAR Label: $label")
 
         requireActivity().runOnUiThread(java.lang.Runnable {
             toggleHarLabel(label)
@@ -704,6 +701,13 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
             } catch (e: Exception) {
                 // hide loading spinner
                 loadingView.visibility = View.GONE
+
+                // reinit model if ORT_FAIL
+                val env = GlobalVars.ortEnv
+                val modelFile = commonUtils.readModel(ModelType.PFD)
+                pfdSession =
+                    env.createSession(modelFile)
+
                 e.message?.let { it1 -> Log.v("Error", it1) }
             }
         }
@@ -799,10 +803,8 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                         .show()
                 } else {
                     val isHandInFrame = pfdHelper.isHandInFrame(
-                        currentFrame!!,
                         pfdResult.keypoint.value[0],
-                        currentLandmark,
-                        isStrict = true
+                        currentLandmark
                     )
 
                     // perform perspective transformation and show image on previewViewSmall
@@ -815,7 +817,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                                 )
                             }
 
-                            if(initialCapture) initialCapture = false
+                            if (initialCapture) initialCapture = false
 
                             previewViewSmall.setImageBitmap(transformedBitmap)
                             previewViewSmall.invalidate()
@@ -872,7 +874,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
         with(rectOverlay) {
             // -1 because no point has been selected
             var keypointIndex = -1
-            val threshold = 20
+            val threshold = 30
 
             setOnTouchListener(object : View.OnTouchListener {
                 override fun onTouch(v: View?, event: MotionEvent?): Boolean {
@@ -888,8 +890,6 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
 
                                 val screenX = event.x
                                 val screenY = event.y
-
-                                Log.v(TAG, "Touch: $screenX, $screenY")
 
                                 // iterate through keypoints to see if any of them are within the on touch threshold
                                 for (i in keypoints.indices) {
