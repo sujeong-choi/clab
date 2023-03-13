@@ -84,13 +84,14 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
     private var isCameraFacingFront: Boolean = false
     private var enableHarInference: Boolean = false
     private var timelapseThread: Thread? = null
-    private var harSkeletonThread: Thread? = null
+    private var harSkeletonThread: Timer? = null
     private var recordThread: Thread? = null
     private var detectThread: Thread? = null
     private var saveVideoThread: Thread? = null
     private var globalPfdResult: PfdResult = PfdResult()
     private var currentLandmark: NormalizedLandmarkList? = null
     private var currentFrame: Bitmap? = null
+    private var prevFrame: Bitmap? = null
     private lateinit var timelapseId: String
     private var recordingState: String = "No Activity"
     private var previewSize: Size? = null
@@ -250,7 +251,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
 
         // destroy threads
         timelapseThread?.join()
-        harSkeletonThread?.join()
+        harSkeletonThread?.cancel()
         recordThread?.join()
         detectThread?.join()
         saveVideoThread?.join()
@@ -336,6 +337,9 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                     val isConverted: Boolean = PacketGetter.getImageData(packetList[2], buffer)
 
                     if (isConverted) {
+                        if (currentFrame != null)
+                            prevFrame = currentFrame?.copy(currentFrame?.config, false)
+
                         if (!initialCapture) {
                             currentFrame?.recycle()
                             currentFrame = null
@@ -353,25 +357,6 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
             setupOnnxModel()
         } catch (e: Exception) {
             e.message?.let { Log.v(TAG, it) }
-        }
-
-        // create mediapipe converter (refer )
-        converter = ExternalTextureConverter(
-            eglManager.context, 2
-        )
-        converter?.setFlipY(true)
-        converter?.setBufferPoolMaxSize(2)
-        converter?.setConsumer(processor)
-
-        // check camera permission and start camera
-        if (!checkPermissions()) {
-            ActivityCompat.requestPermissions(
-                requireActivity(),
-                REQUIRED_PERMISSIONS_32,
-                REQUEST_CODE_PERMISSION
-            )
-        } else {
-            startCamera()
         }
     }
 
@@ -516,13 +501,10 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
             findNavController().navigate(R.id.action_VideoFragment_to_TimelapseFragment)
         }
 
-        testVad.setOnClickListener {
-            harHelper.vadInference()
-        }
-
         // live start and stop on click listeners
         recordButton.setOnClickListener {
-            rectOverlay.clear()
+            // TODO: uncomment to clear bounding box and keypoints once recording starts
+//            rectOverlay.clear()
             isRecording = !isRecording
 
             if (isRecording) {
@@ -577,21 +559,16 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
 
                             Thread.sleep(1000)
 
-//                            currentFrame?.recycle()
                         }
                     }
 
-                    // thread that captures skeletons for HAR
-//                    harSkeletonThread = thread {
-//                        while (enableHarInference) {
-//                            getSkeleton()
-//                            Thread.sleep(4000)
-//                        }
-//                    }
+                    // timer that captures skeletons for HAR
 
-                    val skeletonTimer = fixedRateTimer(name="SkeletonTimer", initialDelay = 0L, period = 4000L){
-                        getSkeleton()
-                    }
+                    harSkeletonThread =
+                        fixedRateTimer(name = "SkeletonTimer", initialDelay = 0L, period = 4000L) {
+                            if (enableHarInference)
+                                getSkeleton()
+                        }
 
                     requireActivity().runOnUiThread(java.lang.Runnable {
                         // show loading spinner
@@ -611,19 +588,19 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                     detectButton.isEnabled = true
                 })
 
+                // stop harSkeleton thread
+                harSkeletonThread?.cancel()
+
                 // stop HAR inference
                 enableHarInference = false
 
                 // stop timelapse thread
                 timelapseThread?.join()
 
-                // stop harSkeleton thread
-                harSkeletonThread?.join()
-
                 // stop har and vad prediction
+                harHelper.vadInference()
                 harSession?.close()
                 harSession = null
-                harHelper.vadInference()
 
                 // save timelapse
                 val totalFrames: Int = frameCounter.text.toString().toInt() + 1
@@ -671,12 +648,11 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                 rectOverlay.clear()
 
                 detectThread = thread {
-                    if(currentFrame != null) {
+                    if (currentFrame != null) {
                         val pfdResult: PfdResult =
                             currentFrame
                                 .let { it1 -> pfdHelper.pfdInference(it1!!, pfdSession) }
 
-//                    currentFrame?.recycle()
 
                         requireActivity().runOnUiThread(java.lang.Runnable {
                             // hide loading spinner
@@ -704,8 +680,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                                     .show()
                             }
                         }
-                    }
-                    else
+                    } else
                         requireActivity().runOnUiThread {
                             Toast.makeText(
                                 requireContext(),
@@ -804,7 +779,6 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
         previewView.post {
             try {
                 val keyPoints = pfdResult.keypoint.value
-                val bbox = pfdResult.bbox.value
 
                 if (keyPoints.isEmpty() || currentFrame == null) {
                     Toast.makeText(
@@ -814,22 +788,23 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                     )
                         .show()
                 } else {
-                    val isHandInFrame = pfdHelper.isHandInFrame(
+                    val isHandInFrame = if (recordingState == "Painting") pfdHelper.isHandInFrame(
                         pfdResult.keypoint.value[0],
                         currentLandmark
-                    )
+                    ) else true
 
                     // perform perspective transformation and show image on previewViewSmall
-                    if (initialCapture || (!isHandInFrame && recordingState == "Painting")) {
+                    if (initialCapture || !isHandInFrame) {
                         requireActivity().runOnUiThread(java.lang.Runnable {
-                            val transformedBitmap = currentFrame.let {
+                            if (initialCapture) initialCapture = false
+
+                            val transformedBitmap = prevFrame.let {
                                 pfdHelper.perspectiveTransformation(
                                     it!!,
                                     keyPoints[0]
                                 )
                             }
 
-                            if (initialCapture) initialCapture = false
 
                             previewViewSmall.setImageBitmap(transformedBitmap)
                             previewViewSmall.invalidate()
@@ -843,12 +818,17 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                                 timelapseId,
                                 plusOne
                             )
+
+                            if (prevFrame != null) {
+                                prevFrame?.recycle()
+                                prevFrame = null
+                            }
+
                         })
                     } else if (isHandInFrame && recordingState == "Painting") {
                         // Do something when hand is detected inside frame during painting
                     }
 
-//                    currentFrame!!.recycle()
                 }
             } catch (e: Exception) {
                 e.message?.let { Log.v("Error", it) }
@@ -859,7 +839,6 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
     private fun drawKeypoints(
         pfdResult: PfdResult,
         radius: Int = 15,
-        enableBbox: Boolean = false
     ) {
         previewView.post {
             try {
@@ -874,7 +853,7 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
                     )
                         .show()
                 } else {
-                    rectOverlay.drawKeypoints(keyPoints[0], bbox[0], enableBbox, radius)
+                    rectOverlay.drawKeypoints(keyPoints[0], bbox[0], true, radius)
                 }
             } catch (e: Exception) {
                 e.message?.let { Log.v("Error", it) }
@@ -886,7 +865,8 @@ class VideoFragment : Fragment(R.layout.video_fragment) {
         with(rectOverlay) {
             // -1 because no point has been selected
             var keypointIndex = -1
-            val threshold = 30
+            // touch detectoin threshold
+            val threshold = 50
 
             setOnTouchListener(object : View.OnTouchListener {
                 override fun onTouch(v: View?, event: MotionEvent?): Boolean {

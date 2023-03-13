@@ -24,6 +24,7 @@ class HARHelper(val context: Context) {
     private var previousLabel = 0
     private var updatedLabel = 0
     private var vadProb: Float = 0f
+    private var vadProbArray: MutableList<Float> = mutableListOf()
 
     // vad variables
     private val vadService by lazy {
@@ -62,7 +63,7 @@ class HARHelper(val context: Context) {
             val predictionArray: FloatArray = FloatArray(prediction.floatBuffer.remaining())
             prediction.floatBuffer.get(predictionArray)
 
-            return getLabel(predictionArray, vadProb)
+            return getLabel(predictionArray)
         }
     }
 
@@ -76,7 +77,7 @@ class HARHelper(val context: Context) {
      * @param vadOutput the output of the VAD model as a Float value
      * @return a String representing the recognized activity
      */
-    private fun getLabel(harOutput: FloatArray, vadOutput: Float): String {
+    private fun getLabel(harOutput: FloatArray): String {
         return try {
             val harOutProb = softmax(harOutput)
             val big3 = arrayOf(
@@ -95,7 +96,7 @@ class HARHelper(val context: Context) {
                 }
             }
 
-            val isVoiceDetected = if (vadOutput > 0.5f) 1 else 0
+            val isVoiceDetected = if (vadProb > 0.5f) 1 else 0
 
             if (top1Index == 2 && isVoiceDetected == 0) {
                 top1Index = 0
@@ -207,8 +208,14 @@ class HARHelper(val context: Context) {
      */
     private val recognitionListener = object : RecognitionListener {
         override fun onResult(hypothesis: Float?) {
-            if (hypothesis != null)
-                vadProb = hypothesis
+            if (hypothesis != null) {
+                vadProbArray.add(hypothesis)
+
+                if(vadProbArray.size == 4) {
+                    vadProb = vadProbArray.max()
+                    vadProbArray.clear()
+                }
+            }
         }
 
         override fun onError(exception: Exception?) {

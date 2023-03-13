@@ -47,7 +47,9 @@ class PFDHelper(val context: Context) {
     private val DIM_PIXEL_SIZE = 3
     private val targetSize: Int = 512
     private val visibilityThreshold = 0.75
+    private var secondPrevHandInFrame = true
     private var prevHandInFrame = true
+    private lateinit var prevBitmap: Bitmap
 
     /**
      * Performs object detection inference on a given bitmap image using the ONNX runtime.
@@ -278,7 +280,7 @@ class PFDHelper(val context: Context) {
         keypoint: MutableList<FloatArray>,
         landMarks: LandmarkProto.NormalizedLandmarkList?,
         isStrict: Boolean = true,
-        bufferZone: Int = 0
+        bufferZone: Int = 80
     ): Boolean {
         if (landMarks != null) {
             // only use the first 22 landmarks from the total skeleton landmarks
@@ -325,8 +327,9 @@ class PFDHelper(val context: Context) {
                 }
             }
 
-            val concatHandInFrame = prevHandInFrame || currentHandInFrame
+            val concatHandInFrame = secondPrevHandInFrame || prevHandInFrame || currentHandInFrame
 
+            secondPrevHandInFrame = prevHandInFrame
             prevHandInFrame = currentHandInFrame
 
             return concatHandInFrame

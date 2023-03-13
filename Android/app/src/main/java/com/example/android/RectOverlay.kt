@@ -24,7 +24,7 @@ class RectOverlay constructor(context: Context?, attributeSet: AttributeSet?) :
     private val rectPaint = Paint().apply {
         color = Color.GREEN
         style = Paint.Style.STROKE
-        strokeWidth = 10f
+        strokeWidth = 5f
     }
     private val paint = Paint().apply {
         color = Color.GREEN
@@ -56,10 +56,10 @@ class RectOverlay constructor(context: Context?, attributeSet: AttributeSet?) :
                 val maxY = localKeypoint.maxByOrNull { it[1] }?.get(1) ?: 0.0f
 
                 canvas?.drawRect(
-                    minX,
-                    minY,
-                    maxX,
-                    maxY,
+                    minX - 80,
+                    minY - 80,
+                    maxX + 80,
+                    maxY + 80,
                     rectPaint
                 )
             }
